@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#17324d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Fuhrpark">
+<title>Fuhrpark</title>
+<style>
+*{box-sizing:border-box}
+:root{--blue:#17324d;--bg:#f4f6f8;--card:#fff;--text:#17212b;--muted:#68747e;--line:#e5e9ed;--green:#18864b;--orange:#b56b00;--red:#b42318}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+body{min-height:100vh}
+header{position:sticky;top:0;z-index:20;background:var(--blue);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
+header h1{font-size:21px;margin:0;font-weight:750}
+.sub{font-size:12px;opacity:.78;margin-top:3px}
+main{max-width:560px;margin:auto;padding:12px 12px calc(90px + env(safe-area-inset-bottom))}
+.hidden{display:none!important}
+.search{width:100%;height:48px;border:0;border-radius:14px;padding:0 15px;font-size:16px;background:#fff;box-shadow:0 1px 5px #00000010;margin-bottom:10px}
+button{border:0;border-radius:13px;min-height:46px;padding:11px 14px;background:var(--blue);color:#fff;font-size:15px;font-weight:650}
+button.secondary{background:#e7edf2;color:var(--blue)}
+button.dangerBtn{background:#f8dddd;color:var(--red)}
+button:active{transform:scale(.98)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.primaryAction{width:100%;height:50px}
+.card,.panel{background:var(--card);border:1px solid #edf0f2;border-radius:17px;padding:14px;margin:9px 0;box-shadow:0 2px 8px #00000009}
+.card{cursor:pointer}
+.vehicle-top{display:flex;align-items:center;gap:11px}
+.vehicle-icon{width:44px;height:44px;border-radius:13px;background:#e8eef3;display:grid;place-items:center;font-size:23px;flex:none}
+.title{font-size:17px;font-weight:750}
+.muted{color:var(--muted);font-size:12px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px}
+.badge{padding:5px 9px;border-radius:20px;background:#e8f4ea;color:#176b3d;font-size:11px;font-weight:700;white-space:nowrap}
+.badge.warn{background:#fff0cf;color:#8a5200}.badge.danger{background:#f9dddd;color:#a51e14}
+.empty{text-align:center;padding:30px 10px;color:#78838b}
+.section-title{font-size:14px;font-weight:750;margin:16px 3px 7px}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:9px 0}
+.stat{background:#fff;border-radius:15px;padding:12px;border:1px solid #edf0f2}
+.stat span{font-size:11px;color:var(--muted)}.stat b{display:block;font-size:18px;margin-top:4px}
+.notice{padding:11px;border-radius:13px;background:#fff0cf;margin:8px 0;font-size:12px}
+.notice.success{background:#e8f4ea}
+.back{width:100%;margin-bottom:8px;background:#e7edf2;color:var(--blue)}
+.detail-head{display:flex;align-items:center;gap:9px;margin:5px 0 12px}
+.detail-head .vehicle-icon{width:48px;height:48px}
+.detail-head-text{min-width:0;flex:1}
+.detail-head-text .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0}
+.quick-grid button{min-height:58px;text-align:left;padding:10px 12px}
+.quick-grid button span{display:block;font-size:20px;margin-bottom:2px}
+.quick-grid button small{font-size:12px}
+.nav-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;background:#e8edf1;border-radius:13px;padding:4px;margin:10px 0}
+.nav-tabs button{min-height:42px;padding:6px 4px;border-radius:10px;background:transparent;color:#56636e;font-size:11px}
+.nav-tabs button.active{background:#fff;color:var(--blue);box-shadow:0 1px 4px #00000012}
+.tab{display:none}.tab.active{display:block}
+.item{border-top:1px solid var(--line);padding:11px 0}.item:first-child{border-top:0}
+.item-actions{display:flex;gap:6px;margin-top:7px}.item-actions button{min-height:36px;padding:7px 10px;font-size:12px}
+.cost{font-weight:750}
+input,select,textarea{width:100%;height:46px;padding:10px 12px;border:1px solid #d7dde2;border-radius:11px;font-size:15px;background:#fff;margin:4px 0 11px}
+textarea{height:auto}
+label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
+.form-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:9px}
+.photo-wrap{position:relative}.photo{width:100%;height:145px;object-fit:cover;border-radius:11px;display:block}
+
+.photo-zoom-overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:18px}
+.photo-zoom-overlay.hidden{display:none}
+.photo-zoom-overlay img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px}
+.photo-zoom-close{position:absolute;right:14px;top:calc(14px + env(safe-area-inset-top));width:46px;height:46px;min-height:46px;border-radius:50%;padding:0;background:#fff;color:#17324d;font-size:28px;line-height:1}
+
+.photo-delete{position:absolute;right:5px;top:5px;width:34px;min-height:34px;padding:0;border-radius:50%;background:#b42318}
+.file-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.doc{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding:10px 0;font-size:13px}
+.doc button{min-height:36px;padding:7px 9px;font-size:12px}
+.table-row{display:grid;grid-template-columns:75px 1fr 1fr;gap:6px;padding:9px 0;border-top:1px solid var(--line);font-size:12px}
+.install{margin:8px 0}
+.kpi{font-size:12px;color:var(--muted);margin-top:10px}
+.fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:15;width:58px;height:58px;min-height:58px;border-radius:50%;font-size:25px;padding:0;box-shadow:0 5px 18px #00000030}
+@media(min-width:561px){.fab{display:none}}
+</style>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+</head>
+<body>
+<header>
+  <h1>🚗 Fahrzeugverwaltung</h1>
+  <div class="sub">Dein Fuhrpark auf einen Blick</div>
+</header>
+
+<main>
+<section id="home">
+  <input id="search" class="search" placeholder="🔎 Fahrzeug suchen…">
+
+  <div id="dashboard"></div>
+
+  <div class="actions">
+    <button class="primaryAction" onclick="newVehicle()">＋ Fahrzeug</button>
+    <button class="secondary primaryAction" onclick="backup()">💾 Sichern</button>
+  </div>
+
+  <div id="installArea" class="install hidden">
+    <button class="secondary" style="width:100%" onclick="installApp()">📲 Als App installieren</button>
+  </div>
+
+  <div class="actions">
+    <button class="secondary" onclick="document.getElementById('importInput').click()">📥 Import</button>
+    <button class="secondary" onclick="showStorageInfo()">ℹ️ Speicherung</button>
+  </div>
+  <input id="importInput" type="file" accept=".json,application/json" class="hidden" onchange="importBackup(this)">
+
+  <div class="section-title">Meine Fahrzeuge</div>
+  <div id="vehicleList"></div>
+</section>
+
+<section id="detail" class="hidden">
+  <button class="back" onclick="showHome()">← Alle Fahrzeuge</button>
+  <div id="detailContent"></div>
+</section>
+</main>
+
+<button class="fab" onclick="newVehicle()" aria-label="Fahrzeug hinzufügen">＋</button>
+
+<div id="photoZoomOverlay" class="photo-zoom-overlay hidden" onclick="closePhotoZoom(event)">
+  <button class="photo-zoom-close" type="button" onclick="closePhotoZoom()">×</button>
+  <img id="photoZoomImage" src="" alt="Vergrößertes Fahrzeugfoto">
+</div>
+
+<script>
+const KEY="fuhrpark_mobile_v2";
+const OLD_KEY="fuhrpark_mobile_v1";
+let db={vehicles:[]};
+let current=null;
+let deferredInstallPrompt=null;
+
+function load(){
+  try{
+    const raw=localStorage.getItem(KEY);
+    if(raw){ db=JSON.parse(raw); if(!Array.isArray(db.vehicles)) db.vehicles=[]; db.vehicles.forEach(v=>{if(!v.type)v.type='car'; if(v.kba==null)v.kba='';}); }
+    else{
+      const old=localStorage.getItem(OLD_KEY);
+      db=old?JSON.parse(old):{vehicles:[]};
+      if(!Array.isArray(db.vehicles)) db.vehicles=[];
+      db.vehicles.forEach(v=>{if(!v.type)v.type='car'; if(v.kba==null)v.kba='';});
+      save();
+    }
+  }catch(e){ db={vehicles:[]}; console.error(e); }
+}
+function save(){
+  try{
+    localStorage.setItem(KEY,JSON.stringify(db));
+    return true;
+  }catch(e){
+    alert("Der Speicher ist voll. Bitte sichere deine Daten und entferne ggf. große Fotos.");
+    console.error(e); return false;
+  }
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+function euro(n){return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(Number(n||0));}
+function vehicleType(v){return v.type==='motorcycle'?'Motorrad':'Auto';}
+function vehicleIcon(v){return v.type==='motorcycle'?'🏍️':'🚗';}
+function status(v){
+  if(!v.tuv) return "";
+  let d=new Date(v.tuv+"T00:00:00"), now=new Date(), days=(d-now)/86400000;
+  return days<0?'<span class="badge danger">TÜV fällig</span>':days<45?'<span class="badge warn">TÜV bald</span>':'<span class="badge">TÜV OK</span>';
+}
+function render(){
+  const q=(document.getElementById('search')?.value||'').toLowerCase();
+  const list=document.getElementById('vehicleList');
+  const now=new Date();
+  let costs=0, upcoming=0, overdue=0, totalKm=0;
+  db.vehicles.forEach(v=>{
+    totalKm+=Number(v.km||0);
+    (v.repairs||[]).forEach(r=>costs+=Number(String(r.cost||0).replace(',','.'))||0);
+    if(v.tuv){
+      const d=new Date(v.tuv+"T00:00:00"), days=(d-now)/86400000;
+      if(days<0) overdue++; else if(days<=60) upcoming++;
+    }
+    (v.reminders||[]).forEach(r=>{
+      if(!r.done){
+        const d=new Date(r.date+"T00:00:00");
+        if(d<now) overdue++; else if((d-now)/86400000<=60) upcoming++;
+      }
+    });
+  });
+  document.getElementById('dashboard').innerHTML=`
+    <div class="stat-grid">
+      <div class="stat"><span>Fahrzeuge</span><b>${db.vehicles.length}</b></div>
+       <div class="stat"><span>Autos / Motorräder</span><b>${db.vehicles.filter(v=>v.type==='car').length} / ${db.vehicles.filter(v=>v.type==='motorcycle').length}</b></div>
+      <div class="stat"><span>Kosten</span><b>${euro(costs)}</b></div>
+      <div class="stat"><span>Kilometer</span><b>${totalKm?totalKm.toLocaleString('de-DE'):'–'}</b></div>
+      <div class="stat"><span>Termine</span><b>${overdue+upcoming}</b></div>
+    </div>
+    ${overdue?`<div class="notice">⚠️ ${overdue} Erinnerung${overdue===1?'':'en'} ist fällig.</div>`:''}
+    ${upcoming?`<div class="notice success">🔔 ${upcoming} Termin${upcoming===1?'':'e'} stehen in den nächsten 60 Tagen an.</div>`:''}`;
+  const vs=db.vehicles.filter(v=>`${v.name} ${v.plate} ${v.model} ${v.kba||''} ${vehicleType(v)}`.toLowerCase().includes(q));
+  if(!vs.length){list.innerHTML='<div class="empty">Noch keine Fahrzeuge angelegt.</div>';return;}
+  list.innerHTML=vs.map(v=>`<div class="card" onclick="openVehicle('${esc(v.id)}')">
+    <div class="vehicle-top">
+      <div class="vehicle-icon">${vehicleIcon(v)}</div>
+      <div style="min-width:0;flex:1"><div class="title">${esc(v.name||'Fahrzeug')}</div><div class="muted">${esc(v.plate||'Kein Kennzeichen')} · ${esc(v.model||'')}</div></div>
+      ${status(v)}
+    </div>
+    <div class="row"><span class="muted">Kilometerstand</span><b>${v.km?Number(v.km).toLocaleString('de-DE')+' km':'–'}</b></div>
+  </div>`).join('');
+}
+function showHome(){
+  current=null;
+  document.getElementById('home').classList.remove('hidden');
+  document.getElementById('detail').classList.add('hidden');
+  render();
+}
+function openVehicle(id){
+  current=db.vehicles.find(v=>v.id===id);
+  if(!current){showHome();return;}
+  renderDetail();
+}
+function renderDetail(){
+  if(!current)return;
+  document.getElementById('home').classList.add('hidden');
+  document.getElementById('detail').classList.remove('hidden');
+
+  const v=current, repairs=v.repairs||[], photos=v.photos||[], docs=v.documents||[], reminders=v.reminders||[];
+  const total=repairs.reduce((sum,r)=>sum+(Number(String(r.cost||0).replace(',','.'))||0),0);
+
+  document.getElementById('detailContent').innerHTML=`
+  <div class="detail-head">
+    <div class="vehicle-icon">${vehicleIcon(v)}</div>
+    <div class="detail-head-text">
+      <div class="title">${esc(v.name||'Fahrzeug')}</div>
+      <div class="muted">${esc(v.plate||'Kein Kennzeichen')} · ${esc(v.model||'')}</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row"><span>Fahrzeugtyp</span><b>${vehicleIcon(v)} ${vehicleType(v)}</b></div>
+    <div class="row"><span>Kilometerstand</span><b>${v.km?Number(v.km).toLocaleString('de-DE')+' km':'–'}</b></div>
+    ${v.tuv?`<div class="row"><span>TÜV</span><b>${esc(v.tuv)}</b></div>`:''}
+    ${v.kba?`<div class="row"><span>KBA-Nummer</span><b>${esc(v.kba)}</b></div>`:''}
+    ${v.vin?`<div class="row"><span>FIN</span><b>${esc(v.vin)}</b></div>`:''}
+    <div class="row"><span>Gesamtkosten</span><b>${euro(total)}</b></div>
+  </div>
+
+  <div class="quick-grid">
+    <button onclick="addRepair()"><span>🔧</span><small>Service</small></button>
+    <button onclick="addReminder()"><span>🔔</span><small>Erinnerung</small></button>
+    <button onclick="addKmEntry()"><span>📈</span><small>Kilometer</small></button>
+    <button onclick="document.getElementById('galleryInput').click()"><span>📷</span><small>Foto</small></button>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="active" onclick="switchTab(this,'overviewTab')">Übersicht</button>
+    <button onclick="switchTab(this,'serviceTab')">Service</button>
+    <button onclick="switchTab(this,'mediaTab')">Fotos</button>
+    <button onclick="switchTab(this,'moreTab')">Mehr</button>
+  </div>
+
+  <div id="overviewTab" class="tab active">
+    <div class="panel"><b>Erinnerungen</b>
+      ${reminders.length?reminders.slice().sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map((r,i)=>`
+        <div class="item">
+          <div class="row"><b>${esc(r.title)}</b><span>${esc(r.date)}</span></div>
+          <div class="muted">${r.done?'✓ Erledigt':'Offen'}${r.note?' · '+esc(r.note):''}</div>
+          <div class="item-actions">
+            <button class="secondary" onclick="toggleReminder(${i})">${r.done?'↩ Offen':'✓ Erledigt'}</button>
+            <button class="secondary" onclick="deleteReminder(${i})">Löschen</button>
+          </div>
+        </div>`).join(''):'<div class="empty">Keine Erinnerungen.</div>'}
+      ${reminders.length>5?`<div class="muted">Weitere Erinnerungen findest du unter „Mehr“.</div>`:''}
+    </div>
+    <div class="panel"><b>Letzte Serviceeinträge</b>
+      ${repairs.length?repairs.map((r,i)=>({r,i})).reverse().slice(0,3).map(({r,i})=>`
+        <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
+        <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
+        <div>${esc(r.note||'')}</div>${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
+        <div class="item-actions"><button class="secondary" onclick="editRepair(${i})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteRepair(${i})">Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Einträge.</div>'}
+    </div>
+  </div>
+
+  <div id="serviceTab" class="tab">
+    <div class="panel"><b>Service & Reparaturen</b>
+      ${repairs.length?repairs.map((r,i)=>({r,i})).reverse().map(({r,i})=>`
+      <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
+      <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
+      <div>${esc(r.note||'')}</div>${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
+      <div class="item-actions"><button class="secondary" onclick="editRepair(${i})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteRepair(${i})">🗑 Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Einträge.</div>'}
+      <button style="width:100%;margin-top:8px" onclick="addRepair()">＋ Service / Reparatur</button>
+    </div>
+    <div class="panel"><b>Kilometerhistorie</b>${renderKmHistory(v)}
+      <button class="secondary" style="width:100%;margin-top:8px" onclick="addKmEntry()">＋ Kilometerstand</button>
+    </div>
+  </div>
+
+  <div id="mediaTab" class="tab">
+    <div class="panel"><b>Fotos</b>
+      <div class="file-buttons">
+        <button type="button" onclick="document.getElementById('cameraInput').click()">📷 Kamera</button>
+        <button type="button" class="secondary" onclick="document.getElementById('galleryInput').click()">🖼️ Galerie</button>
+      </div>
+      <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden" onchange="addPhoto(this)">
+      <input id="galleryInput" type="file" accept="image/*" multiple class="hidden" onchange="addPhotos(this)">
+      <div class="photo-grid">${photos.map((p,i)=>`<div class="photo-wrap"><img class="photo" src="${p}" alt="Fahrzeugfoto" onclick="openPhotoZoom(this.src)" style="cursor:zoom-in"><button class="photo-delete" onclick="deletePhoto(${i})">×</button></div>`).join('')}</div>
+      ${!photos.length?'<div class="empty">Noch keine Fotos.</div>':''}
+    </div>
+    <div class="panel"><b>Dokumente</b>
+      <div class="muted small">Rechnungen, TÜV-Berichte usw.</div>
+      <input id="docInput" type="file" multiple onchange="addDocuments(this)">
+      ${docs.length?docs.map((d,i)=>`<div class="doc"><span>📄 ${esc(d.name)}<br><span class="muted">${formatBytes(d.size)}</span></span><span><button onclick="openDocument(${i})">Öffnen</button><button class="secondary" onclick="deleteDocument(${i})">×</button></span></div>`).join(''):'<div class="empty">Keine Dokumente.</div>'}
+    </div>
+  </div>
+
+  <div id="moreTab" class="tab">
+    <div class="panel">
+      <button class="secondary" style="width:100%;margin-bottom:8px" onclick="editVehicle()">✏️ Fahrzeugdaten bearbeiten</button>
+      <button class="secondary" style="width:100%;margin-bottom:8px" onclick="showStorageInfo()">💾 Speicher & Sicherung</button>
+      <button class="dangerBtn" style="width:100%" onclick="deleteVehicle()">🗑 Fahrzeug löschen</button>
+    </div>
+  </div>`;
+}
+function switchTab(btn,id){
+  document.querySelectorAll('.nav-tabs button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+function renderKmHistory(v){
+  const h=(v.kmHistory||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(!h.length)return '<div class="empty">Noch keine Kilometerstände erfasst.</div>';
+  return h.map(x=>`<div class="table-row"><span>${esc(x.date)}</span><b>${Number(x.km).toLocaleString('de-DE')} km</b><span>${esc(x.note||'')}</span></div>`).join('');
+}
+function newVehicle(){
+  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',year:'',kba:'',vin:'',km:'',tuv:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[]};
+  formVehicle('Neues Fahrzeug');
+}
+function editVehicle(){formVehicle('Fahrzeug bearbeiten');}
+function formVehicle(title){
+  document.getElementById('home').classList.add('hidden');document.getElementById('detail').classList.remove('hidden');
+  const v=current;
+  document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">${title}</div>
+  <label>Fahrzeugtyp</label><select id="f_type">
+    <option value="car" ${v.type==='car'?'selected':''}>🚗 Auto</option>
+    <option value="motorcycle" ${v.type==='motorcycle'?'selected':''}>🏍️ Motorrad</option>
+  </select>
+  <label>Bezeichnung</label><input id="f_name" value="${esc(v.name)}" placeholder="z.B. Fahrzeug 01">
+  <label>Kennzeichen</label><input id="f_plate" value="${esc(v.plate)}">
+  <label>Marke / Modell</label><input id="f_model" value="${esc(v.model)}">
+  <label>Baujahr</label><input id="f_year" value="${esc(v.year)}" inputmode="numeric">
+  <label>KBA-Nummer (HSN / TSN)</label><input id="f_kba" value="${esc(v.kba||'')}" placeholder="z.B. 0603 / BQF">
+  <label>FIN / VIN</label><input id="f_vin" value="${esc(v.vin)}">
+  <label>Aktueller Kilometerstand</label><input id="f_km" value="${esc(v.km)}" inputmode="numeric">
+  <label>TÜV bis</label><input id="f_tuv" type="date" value="${esc(v.tuv)}">
+  <button onclick="saveVehicle()">Speichern</button> <button class="secondary" onclick="${db.vehicles.some(x=>x.id===v.id)?`openVehicle('${esc(v.id)}')`:'showHome()'}">Abbrechen</button>
+  </div>`;
+}
+function saveVehicle(){
+  const v=current;
+  v.type=document.getElementById('f_type').value;
+  v.name=document.getElementById('f_name').value.trim();
+  v.plate=document.getElementById('f_plate').value.trim();
+  v.model=document.getElementById('f_model').value.trim();
+  v.year=document.getElementById('f_year').value.trim();
+  v.kba=document.getElementById('f_kba').value.trim();
+  v.vin=document.getElementById('f_vin').value.trim();
+  v.km=document.getElementById('f_km').value.trim();
+  v.tuv=document.getElementById('f_tuv').value;
+  if(!db.vehicles.find(x=>x.id===v.id)) db.vehicles.push(v);
+  if(save()) openVehicle(v.id);
+}
+function addRepair(){
+  const v=current;
+  document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">Service / Reparatur</div>
+  <label>Datum</label><input id="r_date" type="date" value="${new Date().toISOString().slice(0,10)}">
+  <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(v.km)}">
+  <label>Art</label><select id="r_type"><option>Service</option><option>Inspektion</option><option>Reparatur</option><option>Reifen</option><option>TÜV</option><option>Unfall</option><option>Sonstiges</option></select>
+  <label>Was wurde gemacht?</label><textarea id="r_note" rows="4"></textarea>
+  <label>Werkstatt</label><input id="r_workshop">
+  <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal">
+  <button onclick="saveRepair()">Speichern</button> <button class="secondary" onclick="renderDetail()">Abbrechen</button></div>`;
+}
+function saveRepair(){
+  const v=current;
+  v.repairs=v.repairs||[];
+  v.repairs.push({date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value});
+  v.km=document.getElementById('r_km').value;
+  save();renderDetail();
+}
+function editRepair(index){
+  const v=current, r=(v.repairs||[])[index];
+  if(!r)return;
+  document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">Service / Reparatur bearbeiten</div>
+  <label>Datum</label><input id="r_date" type="date" value="${esc(r.date||'')}">
+  <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(r.km??v.km??'')}">
+  <label>Art</label><select id="r_type">${['Service','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select>
+  <label>Was wurde gemacht?</label><textarea id="r_note" rows="4">${esc(r.note||'')}</textarea>
+  <label>Werkstatt</label><input id="r_workshop" value="${esc(r.workshop||'')}">
+  <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal" value="${esc(r.cost??'')}">
+  <button onclick="updateRepair(${index})">Speichern</button> <button class="secondary" onclick="renderDetail()">Abbrechen</button></div>`;
+}
+function updateRepair(index){
+  const v=current;
+  if(!v?.repairs?.[index])return;
+  v.repairs[index]={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value};
+  v.km=document.getElementById('r_km').value;
+  save();renderDetail();
+}
+function deleteRepair(index){
+  const v=current, r=(v.repairs||[])[index];
+  if(!r)return;
+  if(!confirm('Service-/Wartungseintrag wirklich löschen?'))return;
+  v.repairs.splice(index,1);
+  save();renderDetail();
+}
+function resizeImage(file,maxWidth=1000,quality=.78){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=reject;
+    reader.onload=e=>{
+      const img=new Image();
+      img.onerror=reject;
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>maxWidth){h=Math.round(h*maxWidth/w);w=maxWidth;}
+        const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',quality));
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function addPhoto(input){ await addPhotos(input,false); }
+async function addPhotos(input,multiple=true){
+  const files=Array.from(input.files||[]);
+  if(!files.length)return;
+  try{
+    for(const file of files){
+      if(!file.type.startsWith('image/'))continue;
+      const data=await resizeImage(file);
+      current.photos=current.photos||[];
+      current.photos.push(data);
+    }
+    save();renderDetail();
+  }catch(e){alert("Das Foto konnte nicht geladen werden.");console.error(e);}
+  input.value='';
+}
+
+function openPhotoZoom(src){
+  const overlay=document.getElementById('photoZoomOverlay');
+  const image=document.getElementById('photoZoomImage');
+  if(!overlay||!image)return;
+  image.src=src;
+  overlay.classList.remove('hidden');
+}
+function closePhotoZoom(event){
+  if(event && event.target && event.target.id!=='photoZoomOverlay' && event.target.id!=='photoZoomImage') return;
+  const overlay=document.getElementById('photoZoomOverlay');
+  const image=document.getElementById('photoZoomImage');
+  if(overlay) overlay.classList.add('hidden');
+  if(image) image.src='';
+}
+
+function deletePhoto(index){
+  if(!current?.photos)return;
+  current.photos.splice(index,1);save();renderDetail();
+}
+function addReminder(){
+  const title=prompt("Woran soll erinnert werden?","Service / TÜV / Reifen");
+  if(!title)return;
+  const date=prompt("Datum (JJJJ-MM-TT):",new Date().toISOString().slice(0,10));
+  if(!date)return;
+  const note=prompt("Notiz (optional):","")||"";
+  current.reminders=current.reminders||[];
+  current.reminders.push({title,date,note,done:false});
+  save();renderDetail();
+}
+function toggleReminder(i){
+  current.reminders[i].done=!current.reminders[i].done;save();renderDetail();
+}
+function deleteReminder(i){
+  current.reminders.splice(i,1);save();renderDetail();
+}
+function addKmEntry(){
+  const km=prompt("Aktueller Kilometerstand:",current.km||"");
+  if(km===null)return;
+  const n=Number(String(km).replace(',','.'));
+  if(!Number.isFinite(n)){alert("Bitte eine gültige Zahl eingeben.");return;}
+  const date=prompt("Datum (JJJJ-MM-TT):",new Date().toISOString().slice(0,10));
+  if(!date)return;
+  const note=prompt("Notiz (optional):","")||"";
+  current.km=String(Math.round(n));
+  current.kmHistory=current.kmHistory||[];
+  current.kmHistory.push({date,km:current.km,note});
+  save();renderDetail();
+}
+async function addDocuments(input){
+  const files=Array.from(input.files||[]);
+  if(!files.length)return;
+  current.documents=current.documents||[];
+  for(const file of files){
+    if(file.size>8*1024*1024){alert(`"${file.name}" ist größer als 8 MB und wurde übersprungen.`);continue;}
+    const data=await fileToDataUrl(file);
+    current.documents.push({name:file.name,type:file.type,size:file.size,data});
+  }
+  save();renderDetail();input.value='';
+}
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);
+  });
+}
+function openDocument(i){
+  const d=current.documents[i];
+  if(!d)return;
+  const a=document.createElement('a');a.href=d.data;a.target='_blank';a.rel='noopener';a.click();
+}
+function deleteDocument(i){
+  current.documents.splice(i,1);save();renderDetail();
+}
+function formatBytes(n){
+  if(n<1024)return n+' B';
+  if(n<1024*1024)return Math.round(n/1024)+' KB';
+  return (n/1024/1024).toFixed(1)+' MB';
+}
+function showStorageInfo(){
+  alert("Die Fahrzeugdaten werden direkt auf diesem Gerät im Browser gespeichert. Es gibt keinen automatischen Cloud-Server. Deshalb bleiben Daten normalerweise auf diesem Smartphone/Browser.\\n\\nDie Schaltfläche „Sicherung“ erstellt eine JSON-Datei mit Fahrzeugen, Wartungen, Erinnerungen, Kilometerständen, Fotos und Dokumenten. Diese Datei solltest du regelmäßig außerhalb des Browsers sichern.\\n\\nBei einem neuen Smartphone: App öffnen → „Sicherung importieren“ → JSON-Datei auswählen.\\n\\nWichtig: Browserdaten löschen oder die Website-Daten des Browsers zurücksetzen kann lokale Daten entfernen. Eine Sicherungsdatei schützt davor.");
+}
+async function importBackup(input){
+  const file=input.files[0];
+  if(!file)return;
+  try{
+    const text=await file.text();
+    const imported=JSON.parse(text);
+    if(!imported || !Array.isArray(imported.vehicles))throw new Error("Ungültige Sicherung");
+    if(!confirm(`Sicherung mit ${imported.vehicles.length} Fahrzeugen importieren? Die aktuellen Daten werden ersetzt.`))return;
+    db=imported; save(); showHome();
+    alert("Sicherung erfolgreich importiert.");
+  }catch(e){alert("Die Sicherungsdatei konnte nicht importiert werden.");console.error(e);}
+  input.value='';
+}
+
+function deleteVehicle(){
+  if(confirm('Fahrzeug wirklich löschen?')){
+    db.vehicles=db.vehicles.filter(v=>v.id!==current.id);
+    save();showHome();
+  }
+}
+function backup(){
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='fuhrpark-sicherung-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function installApp(){
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.finally(()=>deferredInstallPrompt=null);
+  }else{
+    alert('Auf iPhone: Teilen → Zum Home-Bildschirm. Auf Android/Chrome: Menü ⋮ → App installieren bzw. Zum Startbildschirm hinzufügen.');
+  }
+}
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();deferredInstallPrompt=e;
+  document.getElementById('installArea').classList.remove('hidden');
+});
+window.addEventListener('appinstalled',()=>{
+  document.getElementById('installArea').classList.add('hidden');
+  deferredInstallPrompt=null;
+});
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
+document.getElementById('search').addEventListener('input',render);
+load();render();
+</script>
+</body>
+</html>
+
+<script>
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePhotoZoom();});
+</script>

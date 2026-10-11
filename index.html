@@ -153,27 +153,39 @@ let db={vehicles:[]};
 let current=null;
 let deferredInstallPrompt=null;
 
-function load(){
-  try{
-    const raw=localStorage.getItem(KEY);
-    if(raw){ db=JSON.parse(raw); if(!Array.isArray(db.vehicles)) db.vehicles=[]; db.vehicles.forEach(v=>{if(!v.type)v.type='car'; if(v.kba==null)v.kba='';}); }
-    else{
-      const old=localStorage.getItem(OLD_KEY);
-      db=old?JSON.parse(old):{vehicles:[]};
-      if(!Array.isArray(db.vehicles)) db.vehicles=[];
-      db.vehicles.forEach(v=>{if(!v.type)v.type='car'; if(v.kba==null)v.kba='';});
-      save();
-    }
-  }catch(e){ db={vehicles:[]}; console.error(e); }
+const IDB_NAME='fuhrpark_datenbank_v1';
+const IDB_STORE='appdata';
+function openAppDB(){
+  return new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window)){reject(new Error('Dieser Browser unterstützt IndexedDB nicht.'));return;}
+    const req=indexedDB.open(IDB_NAME,1);
+    req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(IDB_STORE))req.result.createObjectStore(IDB_STORE);};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('Datenbank konnte nicht geöffnet werden.'));
+  });
 }
-function save(){
+async function idbGet(){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get('fuhrpark');r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);tx.oncomplete=()=>d.close();tx.onerror=()=>{d.close();reject(tx.error);};});}
+async function idbPut(value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,'fuhrpark');tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
+function normalizeDB(value){if(!value||!Array.isArray(value.vehicles))value={vehicles:[]};value.vehicles.forEach(v=>{if(!v.type)v.type='car';if(v.kba==null)v.kba='';});return value;}
+async function load(){
   try{
-    localStorage.setItem(KEY,JSON.stringify(db));
-    return true;
+    const stored=await idbGet();
+    if(stored){db=normalizeDB(stored);return;}
+    // One-time migration: copy existing local data into IndexedDB before removing the full localStorage entry.
+    let raw=localStorage.getItem(KEY);
+    if(!raw)raw=localStorage.getItem(OLD_KEY);
+    db=normalizeDB(raw?JSON.parse(raw):{vehicles:[]});
+    await idbPut(db);
+    try{localStorage.removeItem(KEY);localStorage.removeItem(OLD_KEY);}catch(e){}
   }catch(e){
-    alert("Der Speicher ist voll. Bitte sichere deine Daten und entferne ggf. große Fotos.");
-    console.error(e); return false;
+    console.error(e);
+    // Do not silently replace data with an empty database if migration/storage fails.
+    try{const raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);if(raw){db=normalizeDB(JSON.parse(raw));alert('Die vorhandenen Daten wurden aus dem bisherigen Speicher geladen. Die Umstellung auf den größeren Speicher ist noch nicht abgeschlossen. Bitte nichts löschen und die Sicherung behalten.');return;}}catch(parseError){console.error(parseError);}
+    alert('Der Fuhrpark-Speicher konnte nicht geöffnet werden. Bitte nichts löschen und die JSON-Sicherung behalten.');
   }
+}
+async function save(){
+  try{await idbPut(db);return true;}
+  catch(e){alert('Speichern fehlgeschlagen. Deine letzte JSON-Sicherung bitte unbedingt behalten. Prüfe den freien Gerätespeicher.');console.error(e);return false;}
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
 function euro(n){return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(Number(n||0));}
@@ -609,8 +621,8 @@ async function importBackup(input){
     const imported=JSON.parse(text);
     if(!imported || !Array.isArray(imported.vehicles))throw new Error("Ungültige Sicherung");
     if(!confirm(`Sicherung mit ${imported.vehicles.length} Fahrzeugen importieren? Die aktuellen Daten werden ersetzt.`))return;
-    db=imported; save(); showHome();
-    alert("Sicherung erfolgreich importiert.");
+    db=normalizeDB(imported); await save(); showHome();
+    alert("Sicherung importiert.");
   }catch(e){alert("Die Sicherungsdatei konnte nicht importiert werden.");console.error(e);}
   input.value='';
 }
@@ -649,7 +661,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
 document.getElementById('search').addEventListener('input',render);
-load();render();checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);
+load().then(()=>{render();checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);});
 </script>
 </body>
 </html>

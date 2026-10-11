@@ -12,6 +12,15 @@
 *{box-sizing:border-box}
 :root{--blue:#17324d;--bg:#f4f6f8;--card:#fff;--text:#17212b;--muted:#68747e;--line:#e5e9ed;--green:#18864b;--orange:#b56b00;--red:#b42318}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+button,.card,.panel,.nav-tabs button,.tab{transition:transform .18s ease,background-color .22s ease,color .22s ease,box-shadow .22s ease,opacity .22s ease}
+button{cursor:pointer; -webkit-tap-highlight-color:transparent}
+button:active{transform:scale(.97)}
+.card:active{transform:scale(.992)}
+#appLock{opacity:0;transition:opacity .24s ease}
+#appLock:not(.hidden){opacity:1}
+#appLock .lock-card{transform:translateY(8px) scale(.985);transition:transform .24s ease}
+#appLock:not(.hidden) .lock-card{transform:translateY(0) scale(1)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 body{min-height:100vh}
 header{position:sticky;top:0;z-index:20;background:var(--blue);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
 header h1{font-size:21px;margin:0;font-weight:750}
@@ -110,7 +119,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <body>
 <header>
   <h1>🚗 Fahrzeugverwaltung</h1>
-  <div class="sub">Dein Fuhrpark auf einen Blick</div>
+  <div class="sub">Dein Fuhrpark auf einen Blick <button id="logoutButton" class="secondary" style="float:right;min-height:30px;padding:4px 9px;font-size:12px;margin-top:-5px" onclick="logoutApp()">Abmelden</button></div>
 </header>
 
 <main>
@@ -184,12 +193,15 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 // kein Ersatz für verschlüsselte Speicherung der Browserdaten.
 const LOCK_HASH_KEY='fuhrpark_pin_hash_v1';
 const LOCK_TIMEOUT=30*60*1000;
+const LOCK_ACTIVITY_KEY='fuhrpark_last_activity_v2';
+const LOCK_LOGOUT_KEY='fuhrpark_explicit_logout_v1';
 let lastUserActivity=Date.now();
 let appIsLocked=false;
 function showLock(setup=false){
   appIsLocked=true;
   const overlay=document.getElementById('appLock');
   overlay.classList.remove('hidden');
+  const logout=document.getElementById('logoutButton'); if(logout) logout.classList.add('hidden');
   document.getElementById('lockTitle').textContent=setup?'PIN festlegen':'Fuhrpark gesperrt';
   document.getElementById('lockDescription').textContent=setup?'Lege einen 6-stelligen PIN fest. Du brauchst ihn künftig zum Öffnen der App.':'Bitte PIN eingeben, um deine Fahrzeuge zu öffnen.';
   document.getElementById('lockSubmit').textContent=setup?'PIN speichern':'Entsperren';
@@ -201,6 +213,8 @@ function showLock(setup=false){
 function hideLock(){
   appIsLocked=false;
   lastUserActivity=Date.now();
+  try{localStorage.setItem(LOCK_ACTIVITY_KEY,String(lastUserActivity));localStorage.removeItem(LOCK_LOGOUT_KEY);}catch(_){}
+  const logout=document.getElementById('logoutButton'); if(logout) logout.classList.remove('hidden');
   document.getElementById('appLock').classList.add('hidden');
   document.getElementById('lockPin').value='';
 }
@@ -233,6 +247,11 @@ document.getElementById('lockForm').addEventListener('submit',async e=>{
 function noteUserActivity(){
   if(appIsLocked)return;
   lastUserActivity=Date.now();
+  try{localStorage.setItem(LOCK_ACTIVITY_KEY,String(lastUserActivity));}catch(_){}
+}
+function logoutApp(){
+  try{localStorage.setItem(LOCK_LOGOUT_KEY,'1');localStorage.removeItem(LOCK_ACTIVITY_KEY);}catch(_){}
+  showLock(false);
 }
 ['pointerdown','touchstart','keydown','input','change'].forEach(type=>{
   document.addEventListener(type,noteUserActivity,{passive:true,capture:true});
@@ -244,17 +263,25 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible' && !appIsLocked && Date.now()-lastUserActivity>=LOCK_TIMEOUT)showLock(false);
 });
 window.addEventListener('pagehide',()=>{
-  // Zeitstempel nur für Erkennung der Inaktivität bei Rückkehr, keine Datenänderung.
-  try{sessionStorage.setItem('fuhrpark_lock_last_activity',String(lastUserActivity));}catch(_){}
+  // Letzte Aktivität bleibt über Schließen/Neustart hinweg erhalten.
+  try{if(!appIsLocked)localStorage.setItem(LOCK_ACTIVITY_KEY,String(lastUserActivity));}catch(_){}
 });
 window.addEventListener('pageshow',()=>{
   try{
-    const t=Number(sessionStorage.getItem('fuhrpark_lock_last_activity')||0);
-    if(t && Date.now()-t>=LOCK_TIMEOUT && localStorage.getItem(LOCK_HASH_KEY))showLock(false);
+    const t=Number(localStorage.getItem(LOCK_ACTIVITY_KEY)||0);
+    if(localStorage.getItem(LOCK_HASH_KEY) && (localStorage.getItem(LOCK_LOGOUT_KEY)==='1' || !t || Date.now()-t>=LOCK_TIMEOUT)) showLock(false);
+    else if(localStorage.getItem(LOCK_HASH_KEY) && !appIsLocked){lastUserActivity=t;}
   }catch(_){}
 });
-if(localStorage.getItem(LOCK_HASH_KEY)) showLock(false);
-else showLock(true);
+const storedPinHash=localStorage.getItem(LOCK_HASH_KEY);
+const storedActivity=Number(localStorage.getItem(LOCK_ACTIVITY_KEY)||0);
+const explicitlyLoggedOut=localStorage.getItem(LOCK_LOGOUT_KEY)==='1';
+if(storedPinHash && !explicitlyLoggedOut && storedActivity && Date.now()-storedActivity<LOCK_TIMEOUT){
+  appIsLocked=false; lastUserActivity=storedActivity;
+  document.getElementById('appLock').classList.add('hidden');
+  document.getElementById('logoutButton')?.classList.remove('hidden');
+}else if(storedPinHash){showLock(false);}else{showLock(true);}
+
 
 
 const KEY="fuhrpark_mobile_v2";

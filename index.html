@@ -16,8 +16,13 @@ button,.card,.panel,.nav-tabs button,.tab{transition:transform .16s ease,backgro
 button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 button:active{transform:scale(.985)}
 .card:active{transform:scale(.997)}
-/* Start: Oberfläche erst zeigen, wenn PIN-Status und Daten geladen sind. */
+/* Startschutz: vor der fertigen PIN-/Datenprüfung darf keine App-Seite aufblitzen. */
 body.booting header,body.booting main,body.booting .fab{visibility:hidden}
+body.booting::before{content:"";position:fixed;inset:0;z-index:100000;background:#f4f6f8;}
+body.booting::after{content:"Fuhrpark";position:fixed;inset:0;z-index:100001;display:flex;align-items:center;justify-content:center;padding-top:112px;color:#17324d;font-size:25px;font-weight:750;letter-spacing:.2px;background-color:#f4f6f8;background-image:url("./icon-192.png");background-repeat:no-repeat;background-position:center calc(50% - 42px);background-size:88px 88px;}
+/* Sanfte Einblendungen für Seiten, Dialoge und alle interaktiven Schaltflächen. */
+@keyframes buttonFeedback{0%{transform:scale(1)}45%{transform:scale(.965)}100%{transform:scale(1)}}
+.button-animate{animation:buttonFeedback .24s ease-out both!important}
 /* Animationsklasse wird bei jedem Seitenwechsel per JavaScript neu gestartet. */
 @keyframes pageZoomFade{from{opacity:0;transform:scale(.975) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes softFade{from{opacity:.65}to{opacity:1}}
@@ -411,6 +416,16 @@ function render(){
     <div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><span>${esc(maintenanceState(v).label)}</span><span class="muted">· zuletzt geändert ${esc((v.updatedAt||v.createdAt||'').slice(0,10)||'unbekannt')}</span></div>
   </div>`).join('');
 }
+// Einheitliches kurzes Feedback für sämtliche Buttons, auch für dynamisch erzeugte.
+document.addEventListener('click',e=>{
+  const button=e.target.closest('button,[role=button],.nav-tabs .tab');
+  if(!button || button.disabled || button.closest('#appLock') && button.id==='lockSubmit') return;
+  button.classList.remove('button-animate');
+  void button.offsetWidth;
+  button.classList.add('button-animate');
+  button.addEventListener('animationend',()=>button.classList.remove('button-animate'),{once:true});
+},true);
+
 function animatePage(id){
   const page=document.getElementById(id); if(!page || page.classList.contains('hidden'))return;
   page.classList.remove('page-enter');
@@ -586,6 +601,7 @@ function showAppointments(){
   document.getElementById('home').classList.add('hidden');
   document.getElementById('detail').classList.add('hidden');
   document.getElementById('appointments').classList.remove('hidden');
+  animatePage('appointments');
   renderAppointments();
   animatePage('appointments');
 }
@@ -971,7 +987,7 @@ window.addEventListener('popstate',()=>{
   keepAppOpenOnBack();
 });
 document.getElementById('search').addEventListener('input',render);
-load().then(()=>{render();document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.body.classList.remove('booting');});
+load().then(()=>{render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>requestAnimationFrame(()=>{setTimeout(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');},900);}));checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');setTimeout(()=>document.body.classList.remove('booting'),900);});
 </script>
 </body>
 </html>

@@ -16,11 +16,11 @@ button,.card,.panel,.nav-tabs button,.tab{transition:transform .16s ease,backgro
 button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 button:active{transform:scale(.985)}
 .card:active{transform:scale(.997)}
-/* Dezente, kurze Bewegungen beim Öffnen und Wechseln von Bereichen */
-@keyframes pageFadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+/* Sanfte Fade-/Zoom-Übergänge zwischen App-Seiten */
+@keyframes pageZoomFade{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
 @keyframes softFade{from{opacity:.65}to{opacity:1}}
-#home:not(.hidden),#detail:not(.hidden),#appointments:not(.hidden){animation:pageFadeUp .22s ease-out both}
-.tab.active{animation:softFade .16s ease-out both}
+#home:not(.hidden),#detail:not(.hidden),#appointments:not(.hidden){animation:pageZoomFade .24s cubic-bezier(.2,.7,.2,1) both;transform-origin:center top}
+.tab.active{animation:pageZoomFade .2s ease-out both;transform-origin:center top}
 .card,.panel{transition:transform .16s ease,box-shadow .2s ease,border-color .2s ease}
 .card:focus-within,.panel:focus-within{border-color:#dce4eb}
 #appLock{opacity:1;transition:opacity .2s ease}

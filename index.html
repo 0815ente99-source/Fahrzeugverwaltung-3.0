@@ -16,11 +16,13 @@ button,.card,.panel,.nav-tabs button,.tab{transition:transform .16s ease,backgro
 button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 button:active{transform:scale(.985)}
 .card:active{transform:scale(.997)}
-/* Sanfte Fade-/Zoom-Übergänge zwischen App-Seiten */
-@keyframes pageZoomFade{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
+/* Start: Oberfläche erst zeigen, wenn PIN-Status und Daten geladen sind. */
+body.booting header,body.booting main,body.booting .fab{visibility:hidden}
+/* Animationsklasse wird bei jedem Seitenwechsel per JavaScript neu gestartet. */
+@keyframes pageZoomFade{from{opacity:0;transform:scale(.975) translateY(5px)}to{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes softFade{from{opacity:.65}to{opacity:1}}
-#home:not(.hidden),#detail:not(.hidden),#appointments:not(.hidden){animation:pageZoomFade .24s cubic-bezier(.2,.7,.2,1) both;transform-origin:center top}
-.tab.active{animation:pageZoomFade .2s ease-out both;transform-origin:center top}
+.page-enter{animation:pageZoomFade .32s cubic-bezier(.2,.7,.2,1) both!important;transform-origin:center top;will-change:opacity,transform}
+.tab.active{animation:pageZoomFade .24s ease-out both;transform-origin:center top}
 .card,.panel{transition:transform .16s ease,box-shadow .2s ease,border-color .2s ease}
 .card:focus-within,.panel:focus-within{border-color:#dce4eb}
 #appLock{opacity:1;transition:opacity .2s ease}
@@ -124,7 +126,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
 </head>
-<body>
+<body class="booting">
 <header>
   <h1>🚗 Fahrzeugverwaltung</h1>
   <div class="sub">Dein Fuhrpark auf einen Blick <button id="logoutButton" class="secondary" style="float:right;min-height:30px;padding:4px 9px;font-size:12px;margin-top:-5px" onclick="logoutApp()">Abmelden</button></div>
@@ -409,12 +411,22 @@ function render(){
     <div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><span>${esc(maintenanceState(v).label)}</span><span class="muted">· zuletzt geändert ${esc((v.updatedAt||v.createdAt||'').slice(0,10)||'unbekannt')}</span></div>
   </div>`).join('');
 }
+function animatePage(id){
+  const page=document.getElementById(id); if(!page || page.classList.contains('hidden'))return;
+  page.classList.remove('page-enter');
+  // Erzwingt einen Neustart der Animation, auch wenn dieselbe Seite erneut geöffnet wird.
+  void page.offsetWidth;
+  page.classList.add('page-enter');
+  page.addEventListener('animationend',()=>page.classList.remove('page-enter'),{once:true});
+}
+
 function showHome(){
   current=null;
   document.getElementById('home').classList.remove('hidden');
   document.getElementById('detail').classList.add('hidden');
   document.getElementById('appointments')?.classList.add('hidden');
   render();
+  animatePage('home');
 }
 function openVehicle(id){
   document.getElementById('appointments')?.classList.add('hidden');
@@ -426,6 +438,7 @@ function renderDetail(){
   if(!current)return;
   document.getElementById('home').classList.add('hidden');
   document.getElementById('detail').classList.remove('hidden');
+  animatePage('detail');
 
   const v=current, repairs=v.repairs||[], photos=v.photos||[], docs=v.documents||[], reminders=v.reminders||[];
   const total=repairs.reduce((sum,r)=>sum+(Number(String(r.cost||0).replace(',','.'))||0),0);
@@ -574,6 +587,7 @@ function showAppointments(){
   document.getElementById('detail').classList.add('hidden');
   document.getElementById('appointments').classList.remove('hidden');
   renderAppointments();
+  animatePage('appointments');
 }
 function renderAppointments(){
   const host=document.getElementById('appointmentList'); if(!host)return;
@@ -609,6 +623,7 @@ function switchTab(btn,id){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(id).classList.add('active');
+  const tab=document.getElementById(id);tab.style.animation='none';void tab.offsetWidth;tab.style.animation='';
 }
 function renderKmHistory(v){
   const h=(v.kmHistory||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
@@ -621,7 +636,7 @@ function newVehicle(){
 }
 function editVehicle(){formVehicle('Fahrzeug bearbeiten');}
 function formVehicle(title){
-  document.getElementById('home').classList.add('hidden');document.getElementById('detail').classList.remove('hidden');
+  document.getElementById('home').classList.add('hidden');document.getElementById('detail').classList.remove('hidden');animatePage('detail');
   const v=current;formOriginalKm=String(v.km||'');
   document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">${title}</div>
   <label>Fahrzeugtyp</label><select id="f_type">
@@ -956,7 +971,7 @@ window.addEventListener('popstate',()=>{
   keepAppOpenOnBack();
 });
 document.getElementById('search').addEventListener('input',render);
-load().then(()=>{render();checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);});
+load().then(()=>{render();document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.body.classList.remove('booting');});
 </script>
 </body>
 </html>

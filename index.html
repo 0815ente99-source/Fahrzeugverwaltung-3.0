@@ -93,6 +93,15 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .small-action{min-height:36px;padding:7px 10px;font-size:12px}
 .fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:15;width:58px;height:58px;min-height:58px;border-radius:50%;font-size:25px;padding:0;box-shadow:0 5px 18px #00000030}
 @media(min-width:561px){.fab{display:none}}
+
+#appLock{position:fixed;inset:0;z-index:99999;background:#f4f6f8;display:flex;align-items:center;justify-content:center;padding:22px}
+#appLock.hidden{display:none!important}
+.lock-card{width:100%;max-width:390px;background:#fff;border-radius:22px;padding:24px;box-shadow:0 8px 35px #0002;text-align:center}
+.lock-card h2{margin:8px 0;color:#17324d}
+.lock-card p{color:#68747e;font-size:14px;line-height:1.45}
+.lock-card input{width:100%;height:52px;border:1px solid #cbd5df;border-radius:12px;padding:0 14px;font-size:22px;letter-spacing:6px;text-align:center;margin:10px 0}
+.lock-card button{width:100%;margin-top:8px}
+#lockError{color:#b42318;min-height:20px;font-size:13px}
 </style>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
@@ -154,7 +163,100 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
   <img id="photoZoomImage" src="" alt="Vergrößertes Fahrzeugfoto">
 </div>
 
+
+<div id="appLock" class="hidden" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+  <div class="lock-card">
+    <div style="font-size:42px">🔐</div>
+    <h2 id="lockTitle">Fuhrpark gesperrt</h2>
+    <p id="lockDescription">Bitte PIN eingeben, um deine Fahrzeuge zu öffnen.</p>
+    <form id="lockForm">
+      <input id="lockPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" minlength="6" autocomplete="current-password" placeholder="6-stelliger PIN" aria-label="6-stelliger PIN" required>
+      <div id="lockError" aria-live="polite"></div>
+      <button type="submit" id="lockSubmit">Entsperren</button>
+    </form>
+    <p style="font-size:12px">Die App sperrt sich nach 30 Minuten ohne Bedienung. Bewahre deinen PIN sicher auf.</p>
+  </div>
+</div>
+
 <script>
+
+// App-Sperre: PIN wird nur als SHA-256-Hash gespeichert. Dies ist eine Bedienungssperre,
+// kein Ersatz für verschlüsselte Speicherung der Browserdaten.
+const LOCK_HASH_KEY='fuhrpark_pin_hash_v1';
+const LOCK_TIMEOUT=30*60*1000;
+let lastUserActivity=Date.now();
+let appIsLocked=false;
+function showLock(setup=false){
+  appIsLocked=true;
+  const overlay=document.getElementById('appLock');
+  overlay.classList.remove('hidden');
+  document.getElementById('lockTitle').textContent=setup?'PIN festlegen':'Fuhrpark gesperrt';
+  document.getElementById('lockDescription').textContent=setup?'Lege einen 6-stelligen PIN fest. Du brauchst ihn künftig zum Öffnen der App.':'Bitte PIN eingeben, um deine Fahrzeuge zu öffnen.';
+  document.getElementById('lockSubmit').textContent=setup?'PIN speichern':'Entsperren';
+  document.getElementById('lockPin').value='';
+  document.getElementById('lockPin').placeholder=setup?'Neuen 6-stelligen PIN':'6-stelliger PIN';
+  document.getElementById('lockError').textContent='';
+  setTimeout(()=>document.getElementById('lockPin').focus(),100);
+}
+function hideLock(){
+  appIsLocked=false;
+  lastUserActivity=Date.now();
+  document.getElementById('appLock').classList.add('hidden');
+  document.getElementById('lockPin').value='';
+}
+async function hashPin(pin){
+  if(!window.crypto?.subtle) throw new Error('PIN-Schutz benötigt eine sichere HTTPS-Verbindung.');
+  const data=new TextEncoder().encode(pin);
+  const digest=await crypto.subtle.digest('SHA-256',data);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+document.getElementById('lockForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const pin=document.getElementById('lockPin').value;
+  const error=document.getElementById('lockError');
+  const isSetup=!localStorage.getItem(LOCK_HASH_KEY);
+  if(!/^\d{6}$/.test(pin)){error.textContent='Bitte genau 6 Ziffern eingeben.';return;}
+  try{
+    const hash=await hashPin(pin);
+    if(isSetup){
+      localStorage.setItem(LOCK_HASH_KEY,hash);
+      hideLock();
+    }else if(hash===localStorage.getItem(LOCK_HASH_KEY)){
+      hideLock();
+    }else{
+      error.textContent='PIN ist falsch. Bitte erneut versuchen.';
+      document.getElementById('lockPin').value='';
+      document.getElementById('lockPin').focus();
+    }
+  }catch(err){error.textContent=err.message||'PIN konnte nicht geprüft werden.';}
+});
+function noteUserActivity(){
+  if(appIsLocked)return;
+  lastUserActivity=Date.now();
+}
+['pointerdown','touchstart','keydown','input','change'].forEach(type=>{
+  document.addEventListener(type,noteUserActivity,{passive:true,capture:true});
+});
+setInterval(()=>{
+  if(!appIsLocked && Date.now()-lastUserActivity>=LOCK_TIMEOUT)showLock(false);
+},15000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && !appIsLocked && Date.now()-lastUserActivity>=LOCK_TIMEOUT)showLock(false);
+});
+window.addEventListener('pagehide',()=>{
+  // Zeitstempel nur für Erkennung der Inaktivität bei Rückkehr, keine Datenänderung.
+  try{sessionStorage.setItem('fuhrpark_lock_last_activity',String(lastUserActivity));}catch(_){}
+});
+window.addEventListener('pageshow',()=>{
+  try{
+    const t=Number(sessionStorage.getItem('fuhrpark_lock_last_activity')||0);
+    if(t && Date.now()-t>=LOCK_TIMEOUT && localStorage.getItem(LOCK_HASH_KEY))showLock(false);
+  }catch(_){}
+});
+if(localStorage.getItem(LOCK_HASH_KEY)) showLock(false);
+else showLock(true);
+
+
 const KEY="fuhrpark_mobile_v2";
 const OLD_KEY="fuhrpark_mobile_v1";
 let db={vehicles:[]};

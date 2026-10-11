@@ -12,15 +12,22 @@
 *{box-sizing:border-box}
 :root{--blue:#17324d;--bg:#f4f6f8;--card:#fff;--text:#17212b;--muted:#68747e;--line:#e5e9ed;--green:#18864b;--orange:#b56b00;--red:#b42318}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
-button,.card,.panel,.nav-tabs button,.tab{transition:transform .18s ease,background-color .22s ease,color .22s ease,box-shadow .22s ease,opacity .22s ease}
-button{cursor:pointer; -webkit-tap-highlight-color:transparent}
-button:active{transform:scale(.97)}
-.card:active{transform:scale(.992)}
-#appLock{opacity:0;transition:opacity .24s ease}
+button,.card,.panel,.nav-tabs button,.tab{transition:transform .16s ease,background-color .2s ease,color .2s ease,box-shadow .2s ease,opacity .2s ease}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button:active{transform:scale(.985)}
+.card:active{transform:scale(.997)}
+/* Dezente, kurze Bewegungen beim Öffnen und Wechseln von Bereichen */
+@keyframes pageFadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes softFade{from{opacity:.65}to{opacity:1}}
+#home:not(.hidden),#detail:not(.hidden),#appointments:not(.hidden){animation:pageFadeUp .22s ease-out both}
+.tab.active{animation:softFade .16s ease-out both}
+.card,.panel{transition:transform .16s ease,box-shadow .2s ease,border-color .2s ease}
+.card:focus-within,.panel:focus-within{border-color:#dce4eb}
+#appLock{opacity:0;transition:opacity .2s ease}
 #appLock:not(.hidden){opacity:1}
-#appLock .lock-card{transform:translateY(8px) scale(.985);transition:transform .24s ease}
+#appLock .lock-card{transform:translateY(5px) scale(.99);transition:transform .2s ease}
 #appLock:not(.hidden) .lock-card{transform:translateY(0) scale(1)}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 body{min-height:100vh}
 header{position:sticky;top:0;z-index:20;background:var(--blue);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px}
 header h1{font-size:21px;margin:0;font-weight:750}
@@ -63,6 +70,7 @@ button:active{transform:scale(.98)}
 .nav-tabs button{min-height:42px;padding:6px 2px;border-radius:10px;background:transparent;color:#56636e;font-size:10px;line-height:1.15}
 .nav-tabs button.active{background:#fff;color:var(--blue);box-shadow:0 1px 4px #00000012}
 .tab{display:none}.tab.active{display:block}
+#detailContent>.panel{animation:softFade .18s ease-out both}
 .item{border-top:1px solid var(--line);padding:11px 0}.item:first-child{border-top:0}
 .item-actions{display:flex;gap:6px;margin-top:7px}.item-actions button{min-height:36px;padding:7px 10px;font-size:12px}
 .cost{font-weight:750}
@@ -925,6 +933,28 @@ window.addEventListener('appinstalled',()=>{
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
+// Android-Zurücktaste innerhalb der PWA abfangen: erst innerhalb der App zurückgehen,
+// auf der Startansicht bleiben statt die App durch den Zurück-Verlauf zu verlassen.
+function keepAppOpenOnBack(){
+  try{ history.pushState({fuhrparkStay:true},'',location.href); }catch(e){}
+}
+keepAppOpenOnBack();
+window.addEventListener('popstate',()=>{
+  const zoom=document.getElementById('photoZoomOverlay');
+  if(zoom && !zoom.classList.contains('hidden')){
+    closePhotoZoom();
+  }else{
+    const lock=document.getElementById('appLock');
+    if(!lock || lock.classList.contains('hidden')){
+      const detail=document.getElementById('detail');
+      const appointments=document.getElementById('appointments');
+      if((detail && !detail.classList.contains('hidden')) || (appointments && !appointments.classList.contains('hidden'))){
+        showHome();
+      }
+    }
+  }
+  keepAppOpenOnBack();
+});
 document.getElementById('search').addEventListener('input',render);
 load().then(()=>{render();checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);});
 </script>

@@ -23,7 +23,7 @@ button:active{transform:scale(.985)}
 .tab.active{animation:softFade .16s ease-out both}
 .card,.panel{transition:transform .16s ease,box-shadow .2s ease,border-color .2s ease}
 .card:focus-within,.panel:focus-within{border-color:#dce4eb}
-#appLock{opacity:0;transition:opacity .2s ease}
+#appLock{opacity:1;transition:opacity .2s ease}
 #appLock:not(.hidden){opacity:1}
 #appLock .lock-card{transform:translateY(5px) scale(.99);transition:transform .2s ease}
 #appLock:not(.hidden) .lock-card{transform:translateY(0) scale(1)}
@@ -181,7 +181,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 </div>
 
 
-<div id="appLock" class="hidden" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
+<div id="appLock" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
   <div class="lock-card">
     <div style="font-size:42px">🔐</div>
     <h2 id="lockTitle">Fuhrpark gesperrt</h2>

@@ -19,7 +19,7 @@ button:active{transform:scale(.985)}
 /* Startschutz: vor der fertigen PIN-/Datenprüfung darf keine App-Seite aufblitzen. */
 body.booting header,body.booting main,body.booting .fab{visibility:hidden}
 body.booting::before{content:"";position:fixed;inset:0;z-index:99997;background:#f4f6f8;}
-body.booting::after{content:"Fuhrpark";position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;padding-top:112px;color:#17324d;font-size:25px;font-weight:750;letter-spacing:.2px;background-color:#f4f6f8;background-image:url("./icon-192.png");background-repeat:no-repeat;background-position:center calc(50% - 42px);background-size:88px 88px;}
+body.booting::after{content:"";position:fixed;inset:0;z-index:99998;display:block;background:#f4f6f8;}
 /* Sanfte Einblendungen für Seiten, Dialoge und alle interaktiven Schaltflächen. */
 @keyframes buttonFeedback{0%{transform:scale(1)}45%{transform:scale(.965)}100%{transform:scale(1)}}
 .button-animate{animation:buttonFeedback .24s ease-out both!important}

@@ -184,7 +184,11 @@ async function load(){
   }
 }
 async function save(){
-  try{await idbPut(db);return true;}
+  try{
+    // Jede gespeicherte Änderung am aktuell geöffneten Fahrzeug als letzte Aktivität markieren.
+    if(current && db.vehicles.some(v=>v.id===current.id)) current.updatedAt=new Date().toISOString();
+    await idbPut(db);return true;
+  }
   catch(e){alert('Speichern fehlgeschlagen. Deine letzte JSON-Sicherung bitte unbedingt behalten. Prüfe den freien Gerätespeicher.');console.error(e);return false;}
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
@@ -225,7 +229,9 @@ function render(){
     </div>
     ${overdue?`<div class="notice">⚠️ ${overdue} Erinnerung${overdue===1?'':'en'} ist fällig.</div>`:''}
     ${upcoming?`<div class="notice success">🔔 ${upcoming} Termin${upcoming===1?'':'e'} stehen in den nächsten 60 Tagen an.</div>`:''}`;
-  const vs=db.vehicles.filter(v=>`${v.name} ${v.plate} ${v.model} ${v.kba||''} ${vehicleType(v)}`.toLowerCase().includes(q));
+  // Fahrzeuge mit der neuesten Änderung stehen oben. Alte Einträge ohne Zeitstempel bleiben darunter.
+  const vs=db.vehicles.filter(v=>`${v.name} ${v.plate} ${v.model} ${v.kba||''} ${vehicleType(v)}`.toLowerCase().includes(q))
+    .slice().sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
   if(!vs.length){list.innerHTML='<div class="empty">Noch keine Fahrzeuge angelegt.</div>';return;}
   list.innerHTML=vs.map(v=>`<div class="card" onclick="openVehicle('${esc(v.id)}')">
     <div class="vehicle-top">
@@ -389,7 +395,7 @@ function renderAppointments(){
 }
 function markAppointmentDone(vehicleId,index){
   const v=db.vehicles.find(x=>x.id===vehicleId); if(!v||!v.reminders||!v.reminders[index])return;
-  v.reminders[index].done=!v.reminders[index].done; save();renderAppointments();
+  v.reminders[index].done=!v.reminders[index].done; v.updatedAt=new Date().toISOString(); save();renderAppointments();
 }
 function icsEscape(value){return String(value||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');}
 function exportReminderToCalendar(vehicleId,index){

@@ -74,6 +74,13 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .doc{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding:10px 0;font-size:13px}
 .doc button{min-height:36px;padding:7px 9px;font-size:12px}
 .table-row{display:grid;grid-template-columns:75px 1fr 1fr;gap:6px;padding:9px 0;border-top:1px solid var(--line);font-size:12px}
+.calendar-event{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;padding:11px 0;border-top:1px solid var(--line)}
+.calendar-event:first-child{border-top:0}
+.calendar-event-main{min-width:0;flex:1}
+.calendar-event-date{font-weight:750;color:var(--blue);font-size:13px}
+.calendar-event-title{font-weight:700;margin-top:3px}
+.calendar-event-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.calendar-event-actions button{min-height:34px;padding:6px 9px;font-size:12px}
 .install{margin:8px 0}
 .kpi{font-size:12px;color:var(--muted);margin-top:10px}
 .fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:15;width:58px;height:58px;min-height:58px;border-radius:50%;font-size:25px;padding:0;box-shadow:0 5px 18px #00000030}
@@ -99,6 +106,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
     <button class="primaryAction" onclick="newVehicle()">＋ Fahrzeug</button>
     <button class="secondary primaryAction" onclick="backup()">💾 Sichern</button>
   </div>
+  <button class="secondary primaryAction" style="width:100%;margin:0 0 8px" onclick="showAppointments()">📅 Termine</button>
 
   <div id="installArea" class="install hidden">
     <button class="secondary" style="width:100%" onclick="installApp()">📲 Als App installieren</button>
@@ -117,6 +125,17 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <section id="detail" class="hidden">
   <button class="back" onclick="showHome()">← Alle Fahrzeuge</button>
   <div id="detailContent"></div>
+</section>
+
+<section id="appointments" class="hidden">
+  <button class="back" onclick="showHome()">← Zurück zur Übersicht</button>
+  <div class="panel">
+    <div class="title">📅 Alle Termine</div>
+    <div class="muted">Termine aus allen Fahrzeugen, jeweils mit zugehörigem Fahrzeug.</div>
+    <div id="appointmentList"></div>
+    <div class="actions"><button class="secondary" onclick="enableAppointmentNotifications()">🔔 Benachrichtigungen aktivieren</button></div>
+    <div class="muted">Hinweis: Browser-Benachrichtigungen dieser Version werden nur geprüft, solange die App geöffnet ist. Zuverlässige Push-Nachrichten bei geschlossener App benötigen einen Push-Dienst.</div>
+  </div>
 </section>
 </main>
 
@@ -209,9 +228,11 @@ function showHome(){
   current=null;
   document.getElementById('home').classList.remove('hidden');
   document.getElementById('detail').classList.add('hidden');
+  document.getElementById('appointments')?.classList.add('hidden');
   render();
 }
 function openVehicle(id){
+  document.getElementById('appointments')?.classList.add('hidden');
   current=db.vehicles.find(v=>v.id===id);
   if(!current){showHome();return;}
   renderDetail();
@@ -318,6 +339,60 @@ function renderDetail(){
     </div>
   </div>`;
 }
+async function enableAppointmentNotifications(){
+  if(!('Notification' in window)){alert('Dieser Browser unterstützt keine Benachrichtigungen.');return;}
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted'){alert('Benachrichtigungen wurden nicht erlaubt.');return;}
+  alert('Benachrichtigungen sind aktiviert. Diese Version prüft Termine nur, solange die App geöffnet ist. Für zuverlässige Push-Nachrichten bei geschlossener App ist ein Push-Dienst erforderlich.');
+  checkAppointmentNotifications();
+}
+function checkAppointmentNotifications(){
+  if(!('Notification' in window)||Notification.permission!=='granted')return;
+  const now=new Date(); const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  db.vehicles.forEach(v=>(v.reminders||[]).forEach(r=>{
+    if(!r.done&&r.date===today){
+      const key='fuhrpark-notified-'+v.id+'-'+r.date+'-'+r.title;
+      if(!localStorage.getItem(key)){
+        try{new Notification('Fahrzeugtermin: '+(r.title||'Termin'),{body:(v.name||'Fahrzeug')+(v.plate?' · '+v.plate:'')+(r.note?' — '+r.note:''),icon:'./icon-192.png'});localStorage.setItem(key,'1');}catch(e){console.error(e);}
+      }
+    }
+  }));
+}
+function showAppointments(){
+  document.getElementById('home').classList.add('hidden');
+  document.getElementById('detail').classList.add('hidden');
+  document.getElementById('appointments').classList.remove('hidden');
+  renderAppointments();
+}
+function renderAppointments(){
+  const host=document.getElementById('appointmentList'); if(!host)return;
+  const items=[];
+  db.vehicles.forEach(v=>(v.reminders||[]).forEach((r,i)=>items.push({v,r,i})));
+  items.sort((a,b)=>String(a.r.date||'').localeCompare(String(b.r.date||'')));
+  if(!items.length){host.innerHTML='<div class="empty">Noch keine Termine gespeichert.</div>';return;}
+  host.innerHTML=items.map(({v,r,i})=>{
+    const vehicle=esc([v.name||'Fahrzeug',v.plate||''].filter(Boolean).join(' · '));
+    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(r.date||'Ohne Datum')}${r.done?' · Erledigt':' · Offen'}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="muted">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:''}</div></div>`;
+  }).join('');
+}
+function markAppointmentDone(vehicleId,index){
+  const v=db.vehicles.find(x=>x.id===vehicleId); if(!v||!v.reminders||!v.reminders[index])return;
+  v.reminders[index].done=!v.reminders[index].done; save();renderAppointments();
+}
+function icsEscape(value){return String(value||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');}
+function exportReminderToCalendar(vehicleId,index){
+  const v=db.vehicles.find(x=>x.id===vehicleId); const r=v&&(v.reminders||[])[index];
+  if(!v||!r){alert('Termin nicht gefunden.');return;}
+  if(!r.date||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)){alert('Dieser Termin hat kein gültiges Datum.');return;}
+  const start=r.date.replace(/-/g,''); const next=new Date(r.date+'T00:00:00'); next.setDate(next.getDate()+1);
+  const end=next.getFullYear()+String(next.getMonth()+1).padStart(2,'0')+String(next.getDate()).padStart(2,'0');
+  const details=`Fahrzeug: ${v.name||'Fahrzeug'}${v.plate?' ('+v.plate+')':''}${v.model?' - '+v.model:''}\n${r.note||''}`;
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Fuhrpark//Termine//DE','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:fuhrpark-'+encodeURIComponent(v.id)+'-'+index+'@local','DTSTAMP:'+stamp,'DTSTART;VALUE=DATE:'+start,'DTEND;VALUE=DATE:'+end,'SUMMARY:'+icsEscape(r.title||'Fahrzeugtermin'),'DESCRIPTION:'+icsEscape(details),'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const url=URL.createObjectURL(new Blob([ics],{type:'text/calendar;charset=utf-8'})); const a=document.createElement('a'); a.href=url; a.download='termin-'+start+'.ics'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500);
+  alert('Kalenderdatei erstellt. Öffne die .ics-Datei auf dem Smartphone und füge den Termin deinem Kalender hinzu.');
+}
+
 function switchTab(btn,id){
   document.querySelectorAll('.nav-tabs button').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -574,7 +649,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
 document.getElementById('search').addEventListener('input',render);
-load();render();
+load();render();checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);
 </script>
 </body>
 </html>

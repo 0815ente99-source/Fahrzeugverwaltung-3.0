@@ -50,8 +50,8 @@ button:active{transform:scale(.98)}
 .quick-grid button{min-height:58px;text-align:left;padding:10px 12px}
 .quick-grid button span{display:block;font-size:20px;margin-bottom:2px}
 .quick-grid button small{font-size:12px}
-.nav-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;background:#e8edf1;border-radius:13px;padding:4px;margin:10px 0}
-.nav-tabs button{min-height:42px;padding:6px 4px;border-radius:10px;background:transparent;color:#56636e;font-size:11px}
+.nav-tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;background:#e8edf1;border-radius:13px;padding:4px;margin:10px 0}
+.nav-tabs button{min-height:42px;padding:6px 2px;border-radius:10px;background:transparent;color:#56636e;font-size:10px;line-height:1.15}
 .nav-tabs button.active{background:#fff;color:var(--blue);box-shadow:0 1px 4px #00000012}
 .tab{display:none}.tab.active{display:block}
 .item{border-top:1px solid var(--line);padding:11px 0}.item:first-child{border-top:0}
@@ -83,6 +83,14 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .calendar-event-actions button{min-height:34px;padding:6px 9px;font-size:12px}
 .install{margin:8px 0}
 .kpi{font-size:12px;color:var(--muted);margin-top:10px}
+.status-line{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:12px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#18864b;flex:none}.dot.warn{background:#b56b00}.dot.danger{background:#b42318}.dot.unknown{background:#7b8790}
+.mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0}
+.mini-card{background:#f7f9fa;border:1px solid var(--line);border-radius:12px;padding:10px;font-size:12px}
+.mini-card b{display:block;font-size:16px;margin-top:4px}
+.history-entry{padding:10px 0;border-top:1px solid var(--line)}
+.history-entry:first-child{border-top:0}
+.small-action{min-height:36px;padding:7px 10px;font-size:12px}
 .fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:15;width:58px;height:58px;min-height:58px;border-radius:50%;font-size:25px;padding:0;box-shadow:0 5px 18px #00000030}
 @media(min-width:561px){.fab{display:none}}
 </style>
@@ -152,6 +160,7 @@ const OLD_KEY="fuhrpark_mobile_v1";
 let db={vehicles:[]};
 let current=null;
 let deferredInstallPrompt=null;
+let formOriginalKm='';
 
 const IDB_NAME='fuhrpark_datenbank_v1';
 const IDB_STORE='appdata';
@@ -165,24 +174,28 @@ function openAppDB(){
 }
 async function idbGet(){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get('fuhrpark');r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);tx.oncomplete=()=>d.close();tx.onerror=()=>{d.close();reject(tx.error);};});}
 async function idbPut(value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,'fuhrpark');tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
-function normalizeDB(value){if(!value||!Array.isArray(value.vehicles))value={vehicles:[]};value.vehicles.forEach(v=>{if(!v.type)v.type='car';if(v.kba==null)v.kba='';});return value;}
+function normalizeDB(value){if(!value||!Array.isArray(value.vehicles))value={vehicles:[]};value.vehicles.forEach(v=>{if(!v.type)v.type='car';if(v.kba==null)v.kba='';if(!Array.isArray(v.repairs))v.repairs=[];if(!Array.isArray(v.photos))v.photos=[];if(!Array.isArray(v.documents))v.documents=[];if(!Array.isArray(v.reminders))v.reminders=[];if(!Array.isArray(v.kmHistory))v.kmHistory=[];if(!Array.isArray(v.fuelLogs))v.fuelLogs=[];if(!Array.isArray(v.tires))v.tires=[];if(!Array.isArray(v.history))v.history=[];if(!v.createdAt)v.createdAt=v.updatedAt||'';});return value;}
 async function load(){
   try{
     const stored=await idbGet();
-    if(stored){db=normalizeDB(stored);return;}
-    // One-time migration: copy existing local data into IndexedDB before removing the full localStorage entry.
-    let raw=localStorage.getItem(KEY);
-    if(!raw)raw=localStorage.getItem(OLD_KEY);
-    db=normalizeDB(raw?JSON.parse(raw):{vehicles:[]});
+    let raw=null; try{raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);}catch(e){}
+    // If IndexedDB is populated, it is authoritative. If it is empty, prefer recoverable legacy data.
+    if(stored && Array.isArray(stored.vehicles) && stored.vehicles.length){db=normalizeDB(stored);requestPersistentStorage();return;}
+    if(!raw && stored){db=normalizeDB(stored);requestPersistentStorage();return;}
+    db=normalizeDB(raw?JSON.parse(raw):(stored||{vehicles:[]}));
     await idbPut(db);
+    const verify=await idbGet();
+    if(!verify || !Array.isArray(verify.vehicles) || verify.vehicles.length!==db.vehicles.length)throw new Error('Übernahme konnte nicht bestätigt werden');
     try{localStorage.removeItem(KEY);localStorage.removeItem(OLD_KEY);}catch(e){}
+    requestPersistentStorage();
   }catch(e){
     console.error(e);
-    // Do not silently replace data with an empty database if migration/storage fails.
-    try{const raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);if(raw){db=normalizeDB(JSON.parse(raw));alert('Die vorhandenen Daten wurden aus dem bisherigen Speicher geladen. Die Umstellung auf den größeren Speicher ist noch nicht abgeschlossen. Bitte nichts löschen und die Sicherung behalten.');return;}}catch(parseError){console.error(parseError);}
+    try{const raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);if(raw){db=normalizeDB(JSON.parse(raw));alert('Die vorhandenen Daten wurden aus dem bisherigen Speicher geladen. Die Umstellung ist noch nicht vollständig bestätigt. Bitte nichts löschen und die Sicherung behalten.');return;}}catch(parseError){console.error(parseError);}
     alert('Der Fuhrpark-Speicher konnte nicht geöffnet werden. Bitte nichts löschen und die JSON-Sicherung behalten.');
   }
 }
+async function requestPersistentStorage(){try{if(navigator.storage?.persist)await navigator.storage.persist();}catch(e){console.warn('Persistenter Speicher nicht verfügbar',e);}}
+function logHistory(action,details=''){if(!current)return;current.history=current.history||[];current.history.push({date:new Date().toISOString(),action,details});if(current.history.length>1000)current.history=current.history.slice(-1000);}
 async function save(){
   try{
     // Jede gespeicherte Änderung am aktuell geöffneten Fahrzeug als letzte Aktivität markieren.
@@ -195,6 +208,17 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function euro(n){return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(Number(n||0));}
 function vehicleType(v){return v.type==='motorcycle'?'Motorrad':'Auto';}
 function vehicleIcon(v){return v.type==='motorcycle'?'🏍️':'🚗';}
+function num(v){return Number(String(v??'').replace(',','.'))||0;}
+function maintenanceState(v){
+  const today=new Date();today.setHours(0,0,0,0);let dates=[];
+  if(v.tuv)dates.push(v.tuv);(v.reminders||[]).filter(r=>!r.done&&r.date).forEach(r=>dates.push(r.date));(v.documents||[]).filter(d=>d.expiry).forEach(d=>dates.push(d.expiry));
+  const tire=(v.tires||[]).filter(t=>t.status!=='eingelagert'&&num(t.treadDepth)>0);if(tire.some(t=>num(t.treadDepth)<1.6))return {level:'danger',label:'Reifen kritisch'};
+  const days=dates.map(x=>Math.floor((new Date(x+'T00:00:00')-today)/86400000));
+  if(days.some(d=>d<0))return {level:'danger',label:'Wartung fällig'};
+  if(days.some(d=>d<=30))return {level:'warn',label:'Bald fällig'};
+  if(dates.length)return {level:'ok',label:'Keine Fälligkeit nah'};
+  return {level:'unknown',label:'Keine Fälligkeiten'};
+}
 function status(v){
   if(!v.tuv) return "";
   let d=new Date(v.tuv+"T00:00:00"), now=new Date(), days=(d-now)/86400000;
@@ -204,10 +228,13 @@ function render(){
   const q=(document.getElementById('search')?.value||'').toLowerCase();
   const list=document.getElementById('vehicleList');
   const now=new Date();
-  let costs=0, upcoming=0, overdue=0, totalKm=0;
+  let costs=0, upcoming=0, overdue=0, totalKm=0, maintenanceDue=0;
   db.vehicles.forEach(v=>{
     totalKm+=Number(v.km||0);
-    (v.repairs||[]).forEach(r=>costs+=Number(String(r.cost||0).replace(',','.'))||0);
+    (v.repairs||[]).forEach(r=>costs+=num(r.cost));
+    (v.fuelLogs||[]).forEach(r=>costs+=num(r.price));
+    (v.tires||[]).forEach(r=>costs+=num(r.cost));
+    if(['danger','warn'].includes(maintenanceState(v).level))maintenanceDue++;
     if(v.tuv){
       const d=new Date(v.tuv+"T00:00:00"), days=(d-now)/86400000;
       if(days<0) overdue++; else if(days<=60) upcoming++;
@@ -223,9 +250,11 @@ function render(){
     <div class="stat-grid">
       <div class="stat"><span>Fahrzeuge</span><b>${db.vehicles.length}</b></div>
        <div class="stat"><span>Autos / Motorräder</span><b>${db.vehicles.filter(v=>v.type==='car').length} / ${db.vehicles.filter(v=>v.type==='motorcycle').length}</b></div>
-      <div class="stat"><span>Kosten</span><b>${euro(costs)}</b></div>
+      <div class="stat"><span>Gesamtkosten</span><b>${euro(costs)}</b></div>
       <div class="stat"><span>Kilometer</span><b>${totalKm?totalKm.toLocaleString('de-DE'):'–'}</b></div>
       <div class="stat"><span>Termine</span><b>${overdue+upcoming}</b></div>
+      <div class="stat"><span>Wartung prüfen</span><b>${maintenanceDue}</b></div>
+      <div class="stat"><span>Kraftstoffkosten</span><b>${euro(db.vehicles.reduce((sum,v)=>sum+(v.fuelLogs||[]).reduce((a,r)=>a+num(r.price),0),0))}</b></div>
     </div>
     ${overdue?`<div class="notice">⚠️ ${overdue} Erinnerung${overdue===1?'':'en'} ist fällig.</div>`:''}
     ${upcoming?`<div class="notice success">🔔 ${upcoming} Termin${upcoming===1?'':'e'} stehen in den nächsten 60 Tagen an.</div>`:''}`;
@@ -240,6 +269,7 @@ function render(){
       ${status(v)}
     </div>
     <div class="row"><span class="muted">Kilometerstand</span><b>${v.km?Number(v.km).toLocaleString('de-DE')+' km':'–'}</b></div>
+    <div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><span>${esc(maintenanceState(v).label)}</span><span class="muted">· zuletzt geändert ${esc((v.updatedAt||v.createdAt||'').slice(0,10)||'unbekannt')}</span></div>
   </div>`).join('');
 }
 function showHome(){
@@ -291,11 +321,15 @@ function renderDetail(){
   <div class="nav-tabs">
     <button class="active" onclick="switchTab(this,'overviewTab')">Übersicht</button>
     <button onclick="switchTab(this,'serviceTab')">Service</button>
+    <button onclick="switchTab(this,'fuelTab')">Tank</button>
+    <button onclick="switchTab(this,'tiresTab')">Reifen</button>
     <button onclick="switchTab(this,'mediaTab')">Fotos</button>
     <button onclick="switchTab(this,'moreTab')">Mehr</button>
   </div>
 
   <div id="overviewTab" class="tab active">
+    <div class="panel"><b>🚦 Wartungsampel</b><div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><b>${esc(maintenanceState(v).label)}</b></div><div class="muted">Berücksichtigt TÜV, offene Erinnerungen, Dokumentabläufe und erfasste Reifentiefe. Für automatische Wartungsintervalle bitte Erinnerungen anlegen.</div></div>
+    <div class="panel"><b>💶 Kostenübersicht</b><div class="mini-grid"><div class="mini-card">Service/Reparaturen<b>${euro(repairs.reduce((a,r)=>a+num(r.cost),0))}</b></div><div class="mini-card">Kraftstoff<b>${euro((v.fuelLogs||[]).reduce((a,r)=>a+num(r.price),0))}</b></div><div class="mini-card">Reifen<b>${euro((v.tires||[]).reduce((a,r)=>a+num(r.cost),0))}</b></div><div class="mini-card">Gesamt erfasst<b>${euro(repairs.reduce((a,r)=>a+num(r.cost),0)+(v.fuelLogs||[]).reduce((a,r)=>a+num(r.price),0)+(v.tires||[]).reduce((a,r)=>a+num(r.cost),0))}</b></div></div></div>
     <div class="panel"><b>Erinnerungen</b>
       ${reminders.length?reminders.slice().sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map((r,i)=>`
         <div class="item">
@@ -331,6 +365,21 @@ function renderDetail(){
     </div>
   </div>
 
+  <div id="fuelTab" class="tab">
+    <div class="panel"><b>⛽ Tankbuch</b><div class="muted">Tankvorgänge und Kraftstoffkosten</div>
+      <div class="mini-grid"><div class="mini-card">Gesamtkosten Kraftstoff<b>${euro((v.fuelLogs||[]).reduce((a,r)=>a+num(r.price),0))}</b></div><div class="mini-card">Liter insgesamt<b>${(v.fuelLogs||[]).reduce((a,r)=>a+num(r.liters),0).toLocaleString('de-DE',{maximumFractionDigits:2})} l</b></div></div>
+      ${(v.fuelLogs||[]).length?(v.fuelLogs||[]).map((f,i)=>({f,i})).reverse().map(({f,i})=>`<div class="item"><div class="row"><b>${esc(f.date||'Ohne Datum')} · ${num(f.liters).toLocaleString('de-DE')} l</b><b>${euro(f.price)}</b></div><div class="muted">${f.km?Number(f.km).toLocaleString('de-DE')+' km':''}${f.pricePerLiter?' · '+euro(f.pricePerLiter)+'/l':''}${f.fullTank?' · Volltank':''}</div>${f.note?`<div>${esc(f.note)}</div>`:''}<div class="item-actions"><button class="secondary small-action" onclick="deleteFuelLog(${i})">Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Tankvorgänge.</div>'}
+      <button style="width:100%;margin-top:8px" onclick="addFuelLog()">＋ Tankvorgang erfassen</button>
+    </div>
+  </div>
+
+  <div id="tiresTab" class="tab">
+    <div class="panel"><b>🛞 Reifenverwaltung</b><div class="muted">Reifensatz, Profiltiefe, DOT, Lagerung und Kosten dokumentieren.</div>
+      ${(v.tires||[]).length?(v.tires||[]).map((t,i)=>({t,i})).reverse().map(({t,i})=>`<div class="item"><div class="row"><b>${esc(t.season||'Reifensatz')} · ${esc(t.brand||'')}</b><span class="badge ${num(t.treadDepth)>0&&num(t.treadDepth)<1.6?'danger':num(t.treadDepth)>0&&num(t.treadDepth)<3?'warn':''}">${t.treadDepth?esc(t.treadDepth)+' mm':'Profiltiefe n. a.'}</span></div><div class="muted">${esc(t.size||'Größe n. a.')} · DOT ${esc(t.dot||'n. a.')} · ${esc(t.status||'montiert')}</div><div class="muted">${esc(t.date||'')} · ${euro(t.cost)}</div>${t.note?`<div>${esc(t.note)}</div>`:''}<div class="item-actions"><button class="secondary small-action" onclick="editTire(${i})">Bearbeiten</button><button class="secondary small-action" onclick="deleteTire(${i})">Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Reifen erfasst.</div>'}
+      <button style="width:100%;margin-top:8px" onclick="addTire()">＋ Reifensatz erfassen</button>
+    </div>
+  </div>
+
   <div id="mediaTab" class="tab">
     <div class="panel"><b>Fotos</b>
       <div class="file-buttons">
@@ -343,13 +392,20 @@ function renderDetail(){
       ${!photos.length?'<div class="empty">Noch keine Fotos.</div>':''}
     </div>
     <div class="panel"><b>Dokumente</b>
-      <div class="muted small">Rechnungen, TÜV-Berichte usw.</div>
+      <div class="muted small">Rechnungen, Fahrzeugschein, TÜV-Berichte und Versicherungsunterlagen. Kategorie und optionales Ablaufdatum werden beim Hinzufügen abgefragt.</div>
       <input id="docInput" type="file" multiple onchange="addDocuments(this)">
-      ${docs.length?docs.map((d,i)=>`<div class="doc"><span>📄 ${esc(d.name)}<br><span class="muted">${formatBytes(d.size)}</span></span><span><button onclick="openDocument(${i})">Öffnen</button><button class="secondary" onclick="deleteDocument(${i})">×</button></span></div>`).join(''):'<div class="empty">Keine Dokumente.</div>'}
+      ${docs.length?docs.map((d,i)=>`<div class="doc"><span>📄 ${esc(d.name)}<br><span class="muted">${esc(d.category||'Dokument')} · ${formatBytes(d.size)}${d.expiry?' · gültig bis '+esc(d.expiry):''}${d.note?' · '+esc(d.note):''}</span>${d.expiry&&d.expiry<new Date().toISOString().slice(0,10)?'<br><span class="badge danger">Abgelaufen</span>':''}</span><span><button onclick="openDocument(${i})">Öffnen</button><button class="secondary" onclick="deleteDocument(${i})">×</button></span></div>`).join(''):'<div class="empty">Keine Dokumente.</div>'}
     </div>
   </div>
 
   <div id="moreTab" class="tab">
+    <div class="panel"><b>📜 Fahrzeughistorie</b><div class="muted">Gespeicherte Änderungen und Ereignisse, neueste zuerst.</div>${renderHistory(v)}
+      <button class="secondary" style="width:100%;margin-top:8px" onclick="addHistoryNote()">＋ Notiz zur Historie</button></div>
+    <div class="panel"><b>📄 Berichte & Export</b><div class="muted">Berichte enthalten Fahrzeugdaten, Wartungen, Kilometerstände, Tankbuch, Reifen, Dokumente und Historie. PDF wird über den Druckdialog erstellt.</div>
+      <button style="width:100%;margin-top:8px" onclick="exportVehicleCSV(current.id)">⬇️ Fahrzeugbericht als CSV</button>
+      <button class="secondary" style="width:100%;margin-top:8px" onclick="printVehicleReport(current.id)">🖨️ Fahrzeugbericht / PDF</button>
+      <button class="secondary" style="width:100%;margin-top:8px" onclick="exportAllCSV()">⬇️ Gesamten Fuhrpark als CSV</button>
+    </div>
     <div class="panel">
       <button class="secondary" style="width:100%;margin-bottom:8px" onclick="editVehicle()">✏️ Fahrzeugdaten bearbeiten</button>
       <button class="secondary" style="width:100%;margin-bottom:8px" onclick="showStorageInfo()">💾 Speicher & Sicherung</button>
@@ -393,9 +449,9 @@ function renderAppointments(){
     return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(r.date||'Ohne Datum')}${r.done?' · Erledigt':' · Offen'}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="muted">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:''}</div></div>`;
   }).join('');
 }
-function markAppointmentDone(vehicleId,index){
+async function markAppointmentDone(vehicleId,index){
   const v=db.vehicles.find(x=>x.id===vehicleId); if(!v||!v.reminders||!v.reminders[index])return;
-  v.reminders[index].done=!v.reminders[index].done; v.updatedAt=new Date().toISOString(); save();renderAppointments();
+  v.reminders[index].done=!v.reminders[index].done; v.updatedAt=new Date().toISOString(); if(await save())renderAppointments();
 }
 function icsEscape(value){return String(value||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');}
 function exportReminderToCalendar(vehicleId,index){
@@ -423,13 +479,13 @@ function renderKmHistory(v){
   return h.map(x=>`<div class="table-row"><span>${esc(x.date)}</span><b>${Number(x.km).toLocaleString('de-DE')} km</b><span>${esc(x.note||'')}</span></div>`).join('');
 }
 function newVehicle(){
-  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',year:'',kba:'',vin:'',km:'',tuv:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[]};
+  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',year:'',kba:'',vin:'',km:'',tuv:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[],fuelLogs:[],tires:[],history:[],createdAt:new Date().toISOString()};
   formVehicle('Neues Fahrzeug');
 }
 function editVehicle(){formVehicle('Fahrzeug bearbeiten');}
 function formVehicle(title){
   document.getElementById('home').classList.add('hidden');document.getElementById('detail').classList.remove('hidden');
-  const v=current;
+  const v=current;formOriginalKm=String(v.km||'');
   document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">${title}</div>
   <label>Fahrzeugtyp</label><select id="f_type">
     <option value="car" ${v.type==='car'?'selected':''}>🚗 Auto</option>
@@ -446,7 +502,7 @@ function formVehicle(title){
   <button onclick="saveVehicle()">Speichern</button> <button class="secondary" onclick="${db.vehicles.some(x=>x.id===v.id)?`openVehicle('${esc(v.id)}')`:'showHome()'}">Abbrechen</button>
   </div>`;
 }
-function saveVehicle(){
+async function saveVehicle(){
   const v=current;
   v.type=document.getElementById('f_type').value;
   v.name=document.getElementById('f_name').value.trim();
@@ -457,8 +513,12 @@ function saveVehicle(){
   v.vin=document.getElementById('f_vin').value.trim();
   v.km=document.getElementById('f_km').value.trim();
   v.tuv=document.getElementById('f_tuv').value;
-  if(!db.vehicles.find(x=>x.id===v.id)) db.vehicles.push(v);
-  if(save()) openVehicle(v.id);
+  const existing=db.vehicles.find(x=>x.id===v.id);
+  if(existing){
+    if(formOriginalKm!==String(v.km||'')){v.kmHistory=v.kmHistory||[];v.kmHistory.push({date:new Date().toISOString().slice(0,10),km:String(v.km||''),note:'Kilometerstand in Fahrzeugdaten geändert'});logHistory('Kilometerstand geändert',`${formOriginalKm||'–'} → ${v.km||'–'} km`);}
+    else logHistory('Fahrzeugdaten geändert','Stammdaten gespeichert');
+  }else{v.createdAt=new Date().toISOString();v.history=v.history||[];v.history.push({date:v.createdAt,action:'Fahrzeug angelegt',details:'Fahrzeug wurde erstellt'});db.vehicles.push(v);}
+  if(await save()) openVehicle(v.id);
 }
 function addRepair(){
   const v=current;
@@ -471,12 +531,15 @@ function addRepair(){
   <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal">
   <button onclick="saveRepair()">Speichern</button> <button class="secondary" onclick="renderDetail()">Abbrechen</button></div>`;
 }
-function saveRepair(){
+async function saveRepair(){
   const v=current;
   v.repairs=v.repairs||[];
-  v.repairs.push({date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value});
-  v.km=document.getElementById('r_km').value;
-  save();renderDetail();
+  const entry={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value};
+  v.repairs.push(entry);
+  const oldKm=num(v.km);v.km=document.getElementById('r_km').value;
+  if(num(v.km)>0&&num(v.km)!==oldKm){v.kmHistory=v.kmHistory||[];v.kmHistory.push({date:entry.date,km:String(v.km),note:'Bei Service/Reparatur erfasst'});}
+  logHistory('Service/Reparatur hinzugefügt',`${entry.type} · ${entry.date} · ${euro(entry.cost)}`);
+  if(await save())renderDetail();
 }
 function editRepair(index){
   const v=current, r=(v.repairs||[])[index];
@@ -490,19 +553,20 @@ function editRepair(index){
   <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal" value="${esc(r.cost??'')}">
   <button onclick="updateRepair(${index})">Speichern</button> <button class="secondary" onclick="renderDetail()">Abbrechen</button></div>`;
 }
-function updateRepair(index){
+async function updateRepair(index){
   const v=current;
   if(!v?.repairs?.[index])return;
+  const before=v.repairs[index];
   v.repairs[index]={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value};
-  v.km=document.getElementById('r_km').value;
-  save();renderDetail();
+  v.km=document.getElementById('r_km').value;logHistory('Service/Reparatur bearbeitet',`${before.type||'Eintrag'} · ${v.repairs[index].date}`);
+  if(await save())renderDetail();
 }
-function deleteRepair(index){
+async function deleteRepair(index){
   const v=current, r=(v.repairs||[])[index];
   if(!r)return;
   if(!confirm('Service-/Wartungseintrag wirklich löschen?'))return;
-  v.repairs.splice(index,1);
-  save();renderDetail();
+  v.repairs.splice(index,1);logHistory('Service/Reparatur gelöscht',`${r.type||'Eintrag'} · ${r.date||''}`);
+  if(await save())renderDetail();
 }
 function resizeImage(file,maxWidth=1000,quality=.78){
   return new Promise((resolve,reject)=>{
@@ -532,9 +596,9 @@ async function addPhotos(input,multiple=true){
       if(!file.type.startsWith('image/'))continue;
       const data=await resizeImage(file);
       current.photos=current.photos||[];
-      current.photos.push(data);
+      current.photos.push(data);logHistory('Foto hinzugefügt',file.name||'Fahrzeugfoto');
     }
-    save();renderDetail();
+    if(await save())renderDetail();
   }catch(e){alert("Das Foto konnte nicht geladen werden.");console.error(e);}
   input.value='';
 }
@@ -554,27 +618,27 @@ function closePhotoZoom(event){
   if(image) image.src='';
 }
 
-function deletePhoto(index){
+async function deletePhoto(index){
   if(!current?.photos)return;
-  current.photos.splice(index,1);save();renderDetail();
+  current.photos.splice(index,1);logHistory('Foto gelöscht','Ein Foto wurde entfernt');if(await save())renderDetail();
 }
-function addReminder(){
+async function addReminder(){
   const title=prompt("Woran soll erinnert werden?","Service / TÜV / Reifen");
   if(!title)return;
   const date=prompt("Datum (JJJJ-MM-TT):",new Date().toISOString().slice(0,10));
   if(!date)return;
   const note=prompt("Notiz (optional):","")||"";
   current.reminders=current.reminders||[];
-  current.reminders.push({title,date,note,done:false});
-  save();renderDetail();
+  current.reminders.push({title,date,note,done:false});logHistory('Termin/Erinnerung angelegt',`${title} · ${date}`);
+  if(await save())renderDetail();
 }
-function toggleReminder(i){
-  current.reminders[i].done=!current.reminders[i].done;save();renderDetail();
+async function toggleReminder(i){
+  current.reminders[i].done=!current.reminders[i].done;logHistory(current.reminders[i].done?'Termin erledigt markiert':'Termin wieder geöffnet',current.reminders[i].title||'Erinnerung');if(await save())renderDetail();
 }
-function deleteReminder(i){
-  current.reminders.splice(i,1);save();renderDetail();
+async function deleteReminder(i){
+  const r=current.reminders[i];current.reminders.splice(i,1);logHistory('Termin/Erinnerung gelöscht',r?.title||'Erinnerung');if(await save())renderDetail();
 }
-function addKmEntry(){
+async function addKmEntry(){
   const km=prompt("Aktueller Kilometerstand:",current.km||"");
   if(km===null)return;
   const n=Number(String(km).replace(',','.'));
@@ -584,19 +648,24 @@ function addKmEntry(){
   const note=prompt("Notiz (optional):","")||"";
   current.km=String(Math.round(n));
   current.kmHistory=current.kmHistory||[];
-  current.kmHistory.push({date,km:current.km,note});
-  save();renderDetail();
+  current.kmHistory.push({date,km:current.km,note});logHistory('Kilometerstand erfasst',`${current.km} km · ${date}${note?' · '+note:''}`);
+  if(await save())renderDetail();
 }
 async function addDocuments(input){
   const files=Array.from(input.files||[]);
   if(!files.length)return;
+  const category=prompt('Dokumentkategorie (z. B. Fahrzeugschein, Versicherung, TÜV, Rechnung):','Sonstiges');
+  if(category===null){input.value='';return;}
+  const expiry=prompt('Ablaufdatum (JJJJ-MM-TT), falls vorhanden; sonst leer lassen:','')||'';
+  const note=prompt('Notiz zum Dokument (optional):','')||'';
   current.documents=current.documents||[];
   for(const file of files){
     if(file.size>8*1024*1024){alert(`"${file.name}" ist größer als 8 MB und wurde übersprungen.`);continue;}
     const data=await fileToDataUrl(file);
-    current.documents.push({name:file.name,type:file.type,size:file.size,data});
+    current.documents.push({name:file.name,type:file.type,size:file.size,data,category:category.trim()||'Sonstiges',expiry:/^\d{4}-\d{2}-\d{2}$/.test(expiry)?expiry:'',note});
+    logHistory('Dokument hinzugefügt',`${file.name} · ${category}`);
   }
-  save();renderDetail();input.value='';
+  if(await save())renderDetail();input.value='';
 }
 function fileToDataUrl(file){
   return new Promise((resolve,reject)=>{
@@ -608,16 +677,77 @@ function openDocument(i){
   if(!d)return;
   const a=document.createElement('a');a.href=d.data;a.target='_blank';a.rel='noopener';a.click();
 }
-function deleteDocument(i){
-  current.documents.splice(i,1);save();renderDetail();
+async function deleteDocument(i){
+  const d=current.documents[i];current.documents.splice(i,1);logHistory('Dokument gelöscht',d?.name||'Dokument');if(await save())renderDetail();
 }
+async function addFuelLog(){
+  const date=prompt('Tankdatum (JJJJ-MM-TT):',new Date().toISOString().slice(0,10));if(!date)return;
+  const km=prompt('Kilometerstand:',current.km||'');if(km===null)return;
+  const liters=prompt('Getankte Liter:', '');if(liters===null)return;
+  const price=prompt('Gesamtpreis in Euro:', '');if(price===null)return;
+  const pricePerLiter=num(liters)>0?(num(price)/num(liters)).toFixed(3):'';
+  const fullTank=confirm('Wurde der Tank vollständig gefüllt?');
+  const note=prompt('Notiz (optional):','')||'';
+  if(num(liters)<=0||num(price)<0||num(km)<0){alert('Bitte gültige Liter-, Preis- und Kilometerwerte eingeben.');return;}
+  current.fuelLogs=current.fuelLogs||[];current.fuelLogs.push({date,km:String(km),liters:String(liters),price:String(price),pricePerLiter,fullTank,note});
+  if(num(km)>num(current.km)){current.km=String(Math.round(num(km)));current.kmHistory=current.kmHistory||[];current.kmHistory.push({date,km:current.km,note:'Tankbuch'});}
+  logHistory('Tankvorgang erfasst',`${liters} l · ${euro(price)} · ${date}`);if(await save())renderDetail();
+}
+async function deleteFuelLog(i){const f=current?.fuelLogs?.[i];if(!f||!confirm('Tankvorgang löschen?'))return;current.fuelLogs.splice(i,1);logHistory('Tankvorgang gelöscht',`${f.date||''} · ${f.liters||''} l`);if(await save())renderDetail();}
+async function addTire(){
+  const season=prompt('Reifensatz (Sommer/Winter/Ganzjahr):','Sommer');if(!season)return;
+  const brand=prompt('Hersteller / Modell:','')||'';
+  const size=prompt('Reifengröße (z. B. 205/55 R16):','')||'';
+  const dot=prompt('DOT-Nummer (optional):','')||'';
+  const treadDepth=prompt('Profiltiefe in mm (optional):','')||'';
+  const status=prompt('Status (montiert/eingelagert):','montiert')||'montiert';
+  const date=prompt('Datum (JJJJ-MM-TT):',new Date().toISOString().slice(0,10))||'';
+  const cost=prompt('Kosten in Euro:', '0')||'0';
+  const note=prompt('Lagerort / Notiz (optional):','')||'';
+  current.tires=current.tires||[];current.tires.push({season,brand,size,dot,treadDepth,status,date,cost,note});
+  logHistory('Reifensatz erfasst',`${season} · ${size} · ${status}`);if(await save())renderDetail();
+}
+async function editTire(i){const t=current?.tires?.[i];if(!t)return;
+  const season=prompt('Reifensatz:',t.season||'');if(season===null)return;
+  const brand=prompt('Hersteller / Modell:',t.brand||'');if(brand===null)return;
+  const size=prompt('Reifengröße:',t.size||'');if(size===null)return;
+  const dot=prompt('DOT-Nummer:',t.dot||'');if(dot===null)return;
+  const treadDepth=prompt('Profiltiefe in mm:',t.treadDepth||'');if(treadDepth===null)return;
+  const status=prompt('Status (montiert/eingelagert):',t.status||'montiert');if(status===null)return;
+  const date=prompt('Datum (JJJJ-MM-TT):',t.date||'');if(date===null)return;
+  const cost=prompt('Kosten in Euro:',t.cost||'0');if(cost===null)return;
+  const note=prompt('Lagerort / Notiz:',t.note||'');if(note===null)return;
+  current.tires[i]={...t,season,brand,size,dot,treadDepth,status,date,cost,note};logHistory('Reifensatz bearbeitet',`${season} · ${size}`);if(await save())renderDetail();
+}
+async function deleteTire(i){const t=current?.tires?.[i];if(!t||!confirm('Reifensatz löschen?'))return;current.tires.splice(i,1);logHistory('Reifensatz gelöscht',`${t.season||''} · ${t.size||''}`);if(await save())renderDetail();}
+function renderHistory(v){const h=(v.history||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,100);if(!h.length)return '<div class="empty">Noch keine Historieneinträge. Neue Änderungen werden künftig protokolliert.</div>';return h.map(x=>`<div class="history-entry"><b>${esc(x.action||'Änderung')}</b><div class="muted">${esc((x.date||'').replace('T',' ').slice(0,16))}</div>${x.details?`<div>${esc(x.details)}</div>`:''}</div>`).join('');}
+async function addHistoryNote(){const note=prompt('Notiz für die Fahrzeughistorie:','');if(!note)return;logHistory('Notiz',note);if(await save())renderDetail();}
+function csvCell(value){const s=String(value??'');return '"'+s.replace(/"/g,'""')+'"';}
+function downloadText(filename,text,mime){const blob=new Blob(['\ufeff',text],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+function vehicleReportRows(v){const rows=[['Bereich','Datum','Fahrzeug','Kennzeichen','Details','Kilometer','Kosten','Zusatz']];const name=v.name||'Fahrzeug';
+  rows.push(['Fahrzeugdaten','',name,v.plate||'',`${vehicleType(v)} · ${v.model||''} · KBA ${v.kba||''} · FIN ${v.vin||''}`,v.km||'', '',`Baujahr ${v.year||''}; TÜV ${v.tuv||''}`]);
+  (v.repairs||[]).forEach(r=>rows.push(['Service/Reparatur',r.date,name,v.plate||'',`${r.type||''}: ${r.note||''} ${r.workshop||''}`,r.km||'',r.cost||'', '']));
+  (v.kmHistory||[]).forEach(r=>rows.push(['Kilometerstand',r.date,name,v.plate||'',r.note||'',r.km||'','','']));
+  (v.fuelLogs||[]).forEach(r=>rows.push(['Tankbuch',r.date,name,v.plate||'',`${r.liters||''} Liter; ${r.pricePerLiter||''} €/l; ${r.fullTank?'Volltank':'nicht voll'}; ${r.note||''}`,r.km||'',r.price||'','']));
+  (v.tires||[]).forEach(r=>rows.push(['Reifen',r.date,name,v.plate||'',`${r.season||''}; ${r.brand||''}; ${r.size||''}; DOT ${r.dot||''}; Profil ${r.treadDepth||''} mm; ${r.status||''}`,v.km||'',r.cost||'',r.note||'']));
+  (v.reminders||[]).forEach(r=>rows.push(['Termin',r.date,name,v.plate||'',`${r.title||''}; ${r.done?'erledigt':'offen'}; ${r.note||''}`,'','','']));
+  (v.documents||[]).forEach(r=>rows.push(['Dokument',r.expiry||'',name,v.plate||'',`${r.category||''}; ${r.name||''}; ${r.note||''}`,'','','']));
+  (v.history||[]).forEach(r=>rows.push(['Historie',r.date,name,v.plate||'',`${r.action||''}: ${r.details||''}`,'','','']));return rows;}
+function exportVehicleCSV(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;downloadText(`fuhrpark-${(v.plate||v.name||'fahrzeug').replace(/[^a-z0-9_-]/gi,'_')}.csv`,vehicleReportRows(v).map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
+function exportAllCSV(){const rows=[['Bereich','Datum','Fahrzeug','Kennzeichen','Details','Kilometer','Kosten','Zusatz']];db.vehicles.forEach(v=>rows.push(...vehicleReportRows(v).slice(1)));downloadText('fuhrpark-gesamtbericht.csv',rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
+function printVehicleReport(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;const rows=vehicleReportRows(v);const win=window.open('','_blank');if(!win){alert('Der Bericht wurde vom Browser blockiert. Erlaube bitte Pop-ups für die Fuhrpark-App und versuche es erneut.');return;}const body=rows.map((r,i)=>'<tr>'+r.map(c=>i===0?'<th>'+esc(c)+'</th>':'<td>'+esc(c)+'</td>').join('')+'</tr>').join('');win.document.open();win.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Fuhrparkbericht</title><style>body{font:12px Arial,sans-serif;padding:20px;color:#17212b}h1{font-size:20px}table{border-collapse:collapse;width:100%;font-size:10px}td,th{border:1px solid #bbb;padding:5px;text-align:left;vertical-align:top}th{background:#e8edf3}@media print{button{display:none}}</style></head><body><h1>Fahrzeugbericht: ${esc(v.name||'Fahrzeug')}</h1><p>${esc(v.plate||'')} · ${esc(v.model||'')} · erstellt am ${new Date().toLocaleDateString('de-DE')}</p><button onclick="window.print()">Drucken / als PDF speichern</button><table>${body}</table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);win.document.close();}
+
 function formatBytes(n){
   if(n<1024)return n+' B';
   if(n<1024*1024)return Math.round(n/1024)+' KB';
   return (n/1024/1024).toFixed(1)+' MB';
 }
-function showStorageInfo(){
-  alert("Die Fahrzeugdaten werden direkt auf diesem Gerät im Browser gespeichert. Es gibt keinen automatischen Cloud-Server. Deshalb bleiben Daten normalerweise auf diesem Smartphone/Browser.\\n\\nDie Schaltfläche „Sicherung“ erstellt eine JSON-Datei mit Fahrzeugen, Wartungen, Erinnerungen, Kilometerständen, Fotos und Dokumenten. Diese Datei solltest du regelmäßig außerhalb des Browsers sichern.\\n\\nBei einem neuen Smartphone: App öffnen → „Sicherung importieren“ → JSON-Datei auswählen.\\n\\nWichtig: Browserdaten löschen oder die Website-Daten des Browsers zurücksetzen kann lokale Daten entfernen. Eine Sicherungsdatei schützt davor.");
+async function showStorageInfo(){
+  let quotaText='';
+  try{if(navigator.storage?.estimate){const e=await navigator.storage.estimate();quotaText=`\n\nGeschätzte Browsernutzung: ${formatBytes(e.usage||0)} von ${formatBytes(e.quota||0)}.`;}}catch(e){}
+  let persistentText='';
+  try{if(navigator.storage?.persisted)persistentText='\nDauerhafter Browser-Speicher: '+((await navigator.storage.persisted())?'erteilt':'nicht bestätigt');}catch(e){}
+  alert("Die Fahrzeugdaten werden lokal in der Browser-Datenbank auf diesem Gerät gespeichert. Es gibt keinen automatischen Cloud-Server.\n\nDie Schaltfläche „Sichern“ erstellt eine JSON-Datei mit Fahrzeugen, Wartungen, Erinnerungen, Kilometerständen, Fotos, Dokumenten, Tankbuch, Reifen und Historie. Bitte regelmäßig außerhalb der App sichern.\n\nBrowserdaten löschen oder Website-Daten zurücksetzen kann lokale Daten entfernen. Eine Sicherungsdatei schützt davor."+quotaText+persistentText);
 }
 async function importBackup(input){
   const file=input.files[0];
@@ -627,20 +757,20 @@ async function importBackup(input){
     const imported=JSON.parse(text);
     if(!imported || !Array.isArray(imported.vehicles))throw new Error("Ungültige Sicherung");
     if(!confirm(`Sicherung mit ${imported.vehicles.length} Fahrzeugen importieren? Die aktuellen Daten werden ersetzt.`))return;
-    db=normalizeDB(imported); await save(); showHome();
+    db=normalizeDB(imported); if(!await save())throw new Error("Speichern der Sicherung fehlgeschlagen"); showHome();
     alert("Sicherung importiert.");
   }catch(e){alert("Die Sicherungsdatei konnte nicht importiert werden.");console.error(e);}
   input.value='';
 }
 
-function deleteVehicle(){
+async function deleteVehicle(){
   if(confirm('Fahrzeug wirklich löschen?')){
     db.vehicles=db.vehicles.filter(v=>v.id!==current.id);
-    save();showHome();
+    if(await save())showHome();
   }
 }
 function backup(){
-  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({...db,backupVersion:2,backupCreatedAt:new Date().toISOString()},null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='fuhrpark-sicherung-'+new Date().toISOString().slice(0,10)+'.json';

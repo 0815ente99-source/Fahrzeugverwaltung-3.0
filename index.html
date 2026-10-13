@@ -125,7 +125,14 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .lock-card p{color:#68747e;font-size:14px;line-height:1.45}
 .lock-card input{width:100%;height:52px;border:1px solid #cbd5df;border-radius:12px;padding:0 14px;font-size:22px;letter-spacing:6px;text-align:center;margin:10px 0}
 .lock-card button{width:100%;margin-top:8px}
-#lockError{color:#b42318;min-height:20px;font-size:13px}
+#lockError{color:#68747e;min-height:20px;font-size:13px}
+.unlock-track{position:relative;height:76px;border-radius:18px;background:#e9eef2;border:1px solid #d5dde4;margin:22px 0 10px;overflow:hidden;touch-action:pan-y;user-select:none}
+.unlock-track-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:750;letter-spacing:.7px;color:#81909b;pointer-events:none}
+.unlock-car{position:absolute;left:3px;top:5px;width:62px;height:64px;border-radius:14px;background:#17324d;color:white;display:grid;place-items:center;font-size:35px;box-shadow:0 3px 9px #0002;z-index:2;touch-action:none;cursor:grab;user-select:none}
+.unlock-car:active{cursor:grabbing}
+.unlock-garage{position:absolute;right:4px;top:5px;width:62px;height:64px;border-radius:13px;background:#d5e7d8;display:grid;place-items:center;font-size:35px;border:2px dashed #18864b}
+.unlock-track.unlocked{background:#d5e7d8}
+
 </style>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
@@ -147,7 +154,6 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
     <button class="primaryAction" onclick="newVehicle()">＋ Fahrzeug</button>
     <button class="secondary primaryAction" onclick="backup()">💾 Sichern</button>
   </div>
-  <button class="secondary primaryAction" style="width:100%;margin:0 0 8px" onclick="showAppointments()">📅 Termine</button>
 
   <div id="installArea" class="install hidden">
     <button class="secondary" style="width:100%" onclick="installApp()">📲 Als App installieren</button>
@@ -174,13 +180,12 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
     <div class="title">📅 Alle Termine</div>
     <div class="muted">Termine aus allen Fahrzeugen, jeweils mit zugehörigem Fahrzeug.</div>
     <div id="appointmentList"></div>
-    <div class="actions"><button class="secondary" onclick="enableAppointmentNotifications()">🔔 Benachrichtigungen aktivieren</button></div>
+    <div class="actions" id="notificationActionArea"><button class="secondary" id="notificationEnableButton" onclick="enableAppointmentNotifications()">🔔 Benachrichtigungen aktivieren</button></div>
     <div class="muted">Hinweis: Browser-Benachrichtigungen dieser Version werden nur geprüft, solange die App geöffnet ist. Zuverlässige Push-Nachrichten bei geschlossener App benötigen einen Push-Dienst.</div>
   </div>
 </section>
 </main>
 
-<button class="fab" onclick="newVehicle()" aria-label="Fahrzeug hinzufügen">＋</button>
 
 <div id="photoZoomOverlay" class="photo-zoom-overlay hidden" onclick="closePhotoZoom(event)">
   <button class="photo-zoom-close" type="button" onclick="closePhotoZoom()">×</button>
@@ -190,15 +195,16 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 
 <div id="appLock" role="dialog" aria-modal="true" aria-labelledby="lockTitle">
   <div class="lock-card">
-    <div style="font-size:42px">🔐</div>
+    <div style="font-size:38px">🚘</div>
     <h2 id="lockTitle">Fuhrpark gesperrt</h2>
-    <p id="lockDescription">Bitte PIN eingeben, um deine Fahrzeuge zu öffnen.</p>
-    <form id="lockForm">
-      <input id="lockPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" minlength="6" autocomplete="current-password" placeholder="6-stelliger PIN" aria-label="6-stelliger PIN" required>
-      <div id="lockError" aria-live="polite"></div>
-      <button type="submit" id="lockSubmit">Entsperren</button>
-    </form>
-    <p style="font-size:12px">Die App sperrt sich nach 30 Minuten ohne Bedienung. Bewahre deinen PIN sicher auf.</p>
+    <p id="lockDescription">Schiebe das Auto von links nach rechts in die Garage, um die App zu öffnen.</p>
+    <div class="unlock-track" id="unlockTrack" aria-label="Auto nach rechts in die Garage schieben">
+      <div class="unlock-track-label">AUTO HIER ENTLANG SCHIEBEN</div>
+      <div class="unlock-car" id="unlockCar" role="button" tabindex="0" aria-label="Auto in die Garage schieben">🚗</div>
+      <div class="unlock-garage" id="unlockGarage" aria-hidden="true">🏠</div>
+    </div>
+    <div id="lockError" aria-live="polite">Zum Entsperren das Auto nach rechts ziehen.</div>
+    <p style="font-size:12px">Die App sperrt sich nach 30 Minuten ohne Bedienung.</p>
   </div>
 </div>
 
@@ -212,53 +218,35 @@ const LOCK_ACTIVITY_KEY='fuhrpark_last_activity_v2';
 const LOCK_LOGOUT_KEY='fuhrpark_explicit_logout_v1';
 let lastUserActivity=Date.now();
 let appIsLocked=false;
-function showLock(setup=false){
+function showLock(){
   appIsLocked=true;
   const overlay=document.getElementById('appLock');
   overlay.classList.remove('hidden');
   const logout=document.getElementById('logoutButton'); if(logout) logout.classList.add('hidden');
-  document.getElementById('lockTitle').textContent=setup?'PIN festlegen':'Fuhrpark gesperrt';
-  document.getElementById('lockDescription').textContent=setup?'Lege einen 6-stelligen PIN fest. Du brauchst ihn künftig zum Öffnen der App.':'Bitte PIN eingeben, um deine Fahrzeuge zu öffnen.';
-  document.getElementById('lockSubmit').textContent=setup?'PIN speichern':'Entsperren';
-  document.getElementById('lockPin').value='';
-  document.getElementById('lockPin').placeholder=setup?'Neuen 6-stelligen PIN':'6-stelliger PIN';
-  document.getElementById('lockError').textContent='';
-  setTimeout(()=>document.getElementById('lockPin').focus(),100);
+  document.getElementById('lockTitle').textContent='Fuhrpark gesperrt';
+  document.getElementById('lockDescription').textContent='Schiebe das Auto von links nach rechts in die Garage, um die App zu öffnen.';
+  document.getElementById('lockError').textContent='Zum Entsperren das Auto nach rechts ziehen.';
+  resetUnlockCar();
 }
+function resetUnlockCar(){const car=document.getElementById('unlockCar');const track=document.getElementById('unlockTrack');if(car){car.style.left='3px';car.style.transition='left .18s ease';}if(track)track.classList.remove('unlocked');}
 function hideLock(){
   appIsLocked=false;
   lastUserActivity=Date.now();
   try{localStorage.setItem(LOCK_ACTIVITY_KEY,String(lastUserActivity));localStorage.removeItem(LOCK_LOGOUT_KEY);}catch(_){}
   const logout=document.getElementById('logoutButton'); if(logout) logout.classList.remove('hidden');
   document.getElementById('appLock').classList.add('hidden');
-  document.getElementById('lockPin').value='';
 }
-async function hashPin(pin){
-  if(!window.crypto?.subtle) throw new Error('PIN-Schutz benötigt eine sichere HTTPS-Verbindung.');
-  const data=new TextEncoder().encode(pin);
-  const digest=await crypto.subtle.digest('SHA-256',data);
-  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-document.getElementById('lockForm').addEventListener('submit',async e=>{
-  e.preventDefault();
-  const pin=document.getElementById('lockPin').value;
-  const error=document.getElementById('lockError');
-  const isSetup=!localStorage.getItem(LOCK_HASH_KEY);
-  if(!/^\d{6}$/.test(pin)){error.textContent='Bitte genau 6 Ziffern eingeben.';return;}
-  try{
-    const hash=await hashPin(pin);
-    if(isSetup){
-      localStorage.setItem(LOCK_HASH_KEY,hash);
-      hideLock();
-    }else if(hash===localStorage.getItem(LOCK_HASH_KEY)){
-      hideLock();
-    }else{
-      error.textContent='PIN ist falsch. Bitte erneut versuchen.';
-      document.getElementById('lockPin').value='';
-      document.getElementById('lockPin').focus();
-    }
-  }catch(err){error.textContent=err.message||'PIN konnte nicht geprüft werden.';}
-});
+(function setupCarUnlock(){
+  const car=document.getElementById('unlockCar'), track=document.getElementById('unlockTrack');if(!car||!track)return;
+  let dragging=false,startX=0,startLeft=3;
+  function maxLeft(){return Math.max(3,track.clientWidth-car.offsetWidth-3);}
+  function moveTo(clientX){const left=Math.max(3,Math.min(maxLeft(),startLeft+clientX-startX));car.style.transition='none';car.style.left=left+'px';return left;}
+  function finish(){if(!dragging)return;dragging=false;const left=parseFloat(car.style.left)||3;if(left>=maxLeft()*.72){car.style.transition='left .12s ease';car.style.left=maxLeft()+'px';track.classList.add('unlocked');document.getElementById('lockError').textContent='✓ Garage geöffnet';setTimeout(hideLock,180);}else{car.style.transition='left .18s ease';car.style.left='3px';}}
+  car.addEventListener('pointerdown',e=>{if(!appIsLocked)return;dragging=true;startX=e.clientX;startLeft=parseFloat(car.style.left)||3;car.setPointerCapture?.(e.pointerId);e.preventDefault();});
+  car.addEventListener('pointermove',e=>{if(dragging){moveTo(e.clientX);e.preventDefault();}});
+  car.addEventListener('pointerup',finish);car.addEventListener('pointercancel',finish);
+  car.addEventListener('keydown',e=>{if(appIsLocked&&(e.key==='ArrowRight'||e.key==='Enter'||e.key===' ')){e.preventDefault();car.style.left=maxLeft()+'px';track.classList.add('unlocked');document.getElementById('lockError').textContent='✓ Garage geöffnet';setTimeout(hideLock,180);}});
+})();
 function noteUserActivity(){
   if(appIsLocked)return;
   lastUserActivity=Date.now();
@@ -288,15 +276,13 @@ window.addEventListener('pageshow',()=>{
     else if(localStorage.getItem(LOCK_HASH_KEY) && !appIsLocked){lastUserActivity=t;}
   }catch(_){}
 });
-const storedPinHash=localStorage.getItem(LOCK_HASH_KEY);
 const storedActivity=Number(localStorage.getItem(LOCK_ACTIVITY_KEY)||0);
 const explicitlyLoggedOut=localStorage.getItem(LOCK_LOGOUT_KEY)==='1';
-if(storedPinHash && !explicitlyLoggedOut && storedActivity && Date.now()-storedActivity<LOCK_TIMEOUT){
+if(!explicitlyLoggedOut && storedActivity && Date.now()-storedActivity<LOCK_TIMEOUT){
   appIsLocked=false; lastUserActivity=storedActivity;
   document.getElementById('appLock').classList.add('hidden');
   document.getElementById('logoutButton')?.classList.remove('hidden');
-}else if(storedPinHash){showLock(false);}else{showLock(true);}
-
+}else{showLock();}
 
 
 const KEY="fuhrpark_mobile_v2";
@@ -396,8 +382,7 @@ function render(){
        <div class="stat"><span>Autos / Motorräder</span><b>${db.vehicles.filter(v=>v.type==='car').length} / ${db.vehicles.filter(v=>v.type==='motorcycle').length}</b></div>
       <div class="stat"><span>Gesamtkosten</span><b>${euro(costs)}</b></div>
       <div class="stat"><span>Kilometer</span><b>${totalKm?totalKm.toLocaleString('de-DE'):'–'}</b></div>
-      <div class="stat"><span>Termine</span><b>${overdue+upcoming}</b></div>
-      <div class="stat"><span>Wartung prüfen</span><b>${maintenanceDue}</b></div>
+      <div class="stat" role="button" tabindex="0" style="cursor:pointer" onclick="showAppointments()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showAppointments()}"><span>📅 Termine & Wartung prüfen</span><b>${overdue+upcoming} Termine · ${maintenanceDue} prüfen</b><div class="muted">Tippen für alle Termine</div></div>
       <div class="stat"><span>Kraftstoffkosten</span><b>${euro(db.vehicles.reduce((sum,v)=>sum+(v.fuelLogs||[]).reduce((a,r)=>a+num(r.price),0),0))}</b></div>
     </div>
     ${overdue?`<div class="notice">⚠️ ${overdue} Erinnerung${overdue===1?'':'en'} ist fällig.</div>`:''}
@@ -508,7 +493,7 @@ function renderDetail(){
       ${reminders.length>5?`<div class="muted">Weitere Erinnerungen findest du unter „Mehr“.</div>`:''}
     </div>
     <div class="panel"><b>Letzte Serviceeinträge</b>
-      ${repairs.length?repairs.map((r,i)=>({r,i})).reverse().slice(0,3).map(({r,i})=>`
+      ${repairs.length?repairs.map((r,i)=>({r,i})).sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||''))).slice(0,3).map(({r,i})=>`
         <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
         <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
         <div>${esc(r.note||'')}</div>${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
@@ -518,7 +503,7 @@ function renderDetail(){
 
   <div id="serviceTab" class="tab">
     <div class="panel"><b>Service & Reparaturen</b>
-      ${repairs.length?repairs.map((r,i)=>({r,i})).reverse().map(({r,i})=>`
+      ${repairs.length?repairs.map((r,i)=>({r,i})).sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||''))).map(({r,i})=>`
       <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
       <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
       <div>${esc(r.note||'')}</div>${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
@@ -566,7 +551,7 @@ function renderDetail(){
   <div id="moreTab" class="tab">
     <div class="panel"><b>📜 Fahrzeughistorie</b><div class="muted">Gespeicherte Änderungen und Ereignisse, neueste zuerst.</div>${renderHistory(v)}
       <button class="secondary" style="width:100%;margin-top:8px" onclick="addHistoryNote()">＋ Notiz zur Historie</button></div>
-    <div class="panel"><b>📄 Berichte & Export</b><div class="muted">Berichte enthalten Fahrzeugdaten, Wartungen, Kilometerstände, Tankbuch, Reifen, Dokumente und Historie. PDF wird über den Druckdialog erstellt.</div>
+    <div class="panel"><b>📄 Berichte & Export</b><div class="muted">Berichte enthalten Fahrzeugdaten sowie Service, Reparaturen und Inspektionen. Kilometeränderungen und Historie werden nicht exportiert. PDF wird über den Druckdialog erstellt.</div>
       <button style="width:100%;margin-top:8px" onclick="exportVehicleCSV(current.id)">⬇️ Fahrzeugbericht als CSV</button>
       <button class="secondary" style="width:100%;margin-top:8px" onclick="printVehicleReport(current.id)">🖨️ Fahrzeugbericht / PDF</button>
       <button class="secondary" style="width:100%;margin-top:8px" onclick="exportAllCSV()">⬇️ Gesamten Fuhrpark als CSV</button>
@@ -579,12 +564,18 @@ function renderDetail(){
   </div>`;
 }
 async function enableAppointmentNotifications(){
+  const button=document.getElementById('notificationEnableButton');
+  // Nutzerwunsch: Schaltfläche nach dem ersten Antippen dauerhaft ausblenden.
+  try{localStorage.setItem('fuhrpark_notification_button_used_v1','1');}catch(_){}
+  if(button)button.remove();
+  const area=document.getElementById('notificationActionArea');if(area&&!area.children.length)area.remove();
   if(!('Notification' in window)){alert('Dieser Browser unterstützt keine Benachrichtigungen.');return;}
   const permission=await Notification.requestPermission();
-  if(permission!=='granted'){alert('Benachrichtigungen wurden nicht erlaubt.');return;}
+  if(permission!=='granted'){alert('Benachrichtigungen wurden nicht erlaubt. Die Schaltfläche bleibt wie gewünscht ausgeblendet.');return;}
   alert('Benachrichtigungen sind aktiviert. Diese Version prüft Termine nur, solange die App geöffnet ist. Für zuverlässige Push-Nachrichten bei geschlossener App ist ein Push-Dienst erforderlich.');
   checkAppointmentNotifications();
 }
+function syncNotificationButton(){if(localStorage.getItem('fuhrpark_notification_button_used_v1')==='1'){document.getElementById('notificationEnableButton')?.remove();const a=document.getElementById('notificationActionArea');if(a&&!a.children.length)a.remove();}}
 function checkAppointmentNotifications(){
   if(!('Notification' in window)||Notification.permission!=='granted')return;
   const now=new Date(); const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
@@ -603,6 +594,7 @@ function showAppointments(){
   document.getElementById('appointments').classList.remove('hidden');
   animatePage('appointments');
   renderAppointments();
+  syncNotificationButton();
   animatePage('appointments');
 }
 function renderAppointments(){
@@ -892,15 +884,16 @@ function renderHistory(v){const h=(v.history||[]).slice().sort((a,b)=>String(b.d
 async function addHistoryNote(){const note=prompt('Notiz für die Fahrzeughistorie:','');if(!note)return;logHistory('Notiz',note);if(await save())renderDetail();}
 function csvCell(value){const s=String(value??'');return '"'+s.replace(/"/g,'""')+'"';}
 function downloadText(filename,text,mime){const blob=new Blob(['\ufeff',text],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
-function vehicleReportRows(v){const rows=[['Bereich','Datum','Fahrzeug','Kennzeichen','Details','Kilometer','Kosten','Zusatz']];const name=v.name||'Fahrzeug';
+function vehicleReportRows(v){
+  const rows=[['Bereich','Datum','Fahrzeug','Kennzeichen','Details','Kilometer','Kosten','Zusatz']];
+  const name=v.name||'Fahrzeug';
   rows.push(['Fahrzeugdaten','',name,v.plate||'',`${vehicleType(v)} · ${v.model||''} · KBA ${v.kba||''} · FIN ${v.vin||''}`,v.km||'', '',`Baujahr ${v.year||''}; TÜV ${v.tuv||''}`]);
-  (v.repairs||[]).forEach(r=>rows.push(['Service/Reparatur',r.date,name,v.plate||'',`${r.type||''}: ${r.note||''} ${r.workshop||''}`,r.km||'',r.cost||'', '']));
-  (v.kmHistory||[]).forEach(r=>rows.push(['Kilometerstand',r.date,name,v.plate||'',r.note||'',r.km||'','','']));
-  (v.fuelLogs||[]).forEach(r=>rows.push(['Tankbuch',r.date,name,v.plate||'',`${r.liters||''} Liter; ${r.pricePerLiter||''} €/l; ${r.fullTank?'Volltank':'nicht voll'}; ${r.note||''}`,r.km||'',r.price||'','']));
-  (v.tires||[]).forEach(r=>rows.push(['Reifen',r.date,name,v.plate||'',`${r.season||''}; ${r.brand||''}; ${r.size||''}; DOT ${r.dot||''}; Profil ${r.treadDepth||''} mm; ${r.status||''}`,v.km||'',r.cost||'',r.note||'']));
-  (v.reminders||[]).forEach(r=>rows.push(['Termin',r.date,name,v.plate||'',`${r.title||''}; ${r.done?'erledigt':'offen'}; ${r.note||''}`,'','','']));
-  (v.documents||[]).forEach(r=>rows.push(['Dokument',r.expiry||'',name,v.plate||'',`${r.category||''}; ${r.name||''}; ${r.note||''}`,'','','']));
-  (v.history||[]).forEach(r=>rows.push(['Historie',r.date,name,v.plate||'',`${r.action||''}: ${r.details||''}`,'','','']));return rows;}
+  // Serviceeinträge (inkl. Inspektionen) nach tatsächlichem Servicedatum sortieren.
+  (v.repairs||[]).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))).forEach(r=>{
+    rows.push([r.type||'Service/Reparatur',r.date||'',name,v.plate||'',`${r.note||''}${r.workshop?' · Werkstatt: '+r.workshop:''}`,r.km||'',r.cost||'','']);
+  });
+  return rows;
+}
 function exportVehicleCSV(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;downloadText(`fuhrpark-${(v.plate||v.name||'fahrzeug').replace(/[^a-z0-9_-]/gi,'_')}.csv`,vehicleReportRows(v).map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
 function exportAllCSV(){const rows=[['Bereich','Datum','Fahrzeug','Kennzeichen','Details','Kilometer','Kosten','Zusatz']];db.vehicles.forEach(v=>rows.push(...vehicleReportRows(v).slice(1)));downloadText('fuhrpark-gesamtbericht.csv',rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
 function printVehicleReport(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;const rows=vehicleReportRows(v);const win=window.open('','_blank');if(!win){alert('Der Bericht wurde vom Browser blockiert. Erlaube bitte Pop-ups für die Fuhrpark-App und versuche es erneut.');return;}const body=rows.map((r,i)=>'<tr>'+r.map(c=>i===0?'<th>'+esc(c)+'</th>':'<td>'+esc(c)+'</td>').join('')+'</tr>').join('');win.document.open();win.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Fuhrparkbericht</title><style>body{font:12px Arial,sans-serif;padding:20px;color:#17212b}h1{font-size:20px}table{border-collapse:collapse;width:100%;font-size:10px}td,th{border:1px solid #bbb;padding:5px;text-align:left;vertical-align:top}th{background:#e8edf3}@media print{button{display:none}}</style></head><body><h1>Fahrzeugbericht: ${esc(v.name||'Fahrzeug')}</h1><p>${esc(v.plate||'')} · ${esc(v.model||'')} · erstellt am ${new Date().toLocaleDateString('de-DE')}</p><button onclick="window.print()">Drucken / als PDF speichern</button><table>${body}</table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);win.document.close();}

@@ -736,18 +736,9 @@ function syncNotificationButton(){
   const button=document.getElementById('notificationEnableButton');
   if(!button)return;
   if(!('Notification' in window)){button.textContent='🔔 Benachrichtigungen nicht verfügbar';button.disabled=true;return;}
-  if(Notification.permission==='granted'){
-    button.style.display='none';
-    button.setAttribute('aria-hidden','true');
-  }else if(Notification.permission==='denied'){
-    button.textContent='🔔 Im Browser blockiert';
-    button.disabled=true;
-  }else{
-    button.style.display='';
-    button.removeAttribute('aria-hidden');
-    button.textContent='🔔 Benachrichtigungen aktivieren';
-    button.disabled=false;
-  }
+  if(Notification.permission==='granted'){button.textContent='🔔 Benachrichtigungen erlaubt';button.disabled=true;}
+  else if(Notification.permission==='denied'){button.textContent='🔔 Im Browser blockiert';button.disabled=true;}
+  else{button.textContent='🔔 Benachrichtigungen aktivieren';button.disabled=false;}
 }
 async function checkAppointmentNotifications(){
   if(!('Notification' in window)||Notification.permission!=='granted')return;

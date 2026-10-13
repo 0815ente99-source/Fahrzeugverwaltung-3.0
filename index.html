@@ -59,7 +59,7 @@ button:active{transform:scale(.98)}
 .badge.warn{background:#fff0cf;color:#8a5200}.badge.danger{background:#f9dddd;color:#a51e14}
 .empty{text-align:center;padding:30px 10px;color:#78838b}
 .section-title{font-size:14px;font-weight:750;margin:16px 3px 7px}
-.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:9px 0}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:9px 0}.stat.full-width{grid-column:1/-1}.stat.term-green{background:#e8f4ea;border-color:#b8dfc2}.stat.term-yellow{background:#fff0cf;border-color:#f0d28a}.stat.term-red{background:#f9dddd;border-color:#e9a8a3}
 .stat{background:#fff;border-radius:15px;padding:12px;border:1px solid #edf0f2}
 .stat span{font-size:11px;color:var(--muted)}.stat b{display:block;font-size:18px;margin-top:4px}
 .notice{padding:11px;border-radius:13px;background:#fff0cf;margin:8px 0;font-size:12px}
@@ -152,19 +152,11 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 
   <div class="actions">
     <button class="primaryAction" onclick="newVehicle()">＋ Fahrzeug</button>
-    <button class="secondary primaryAction" onclick="backup()">💾 Sichern</button>
-  </div>
-  <div class="actions">
-    <button class="secondary primaryAction" onclick="showCostOverview()">💶 Kostenübersicht</button>
+    <button class="secondary primaryAction" onclick="showInfoSettings()">⚙️ Info/Settings</button>
   </div>
 
   <div id="installArea" class="install hidden">
     <button class="secondary" style="width:100%" onclick="installApp()">📲 Als App installieren</button>
-  </div>
-
-  <div class="actions">
-    <button class="secondary" onclick="document.getElementById('importInput').click()">📥 Import</button>
-    <button class="secondary" onclick="showStorageInfo()">ℹ️ Speicherung</button>
   </div>
   <input id="importInput" type="file" accept=".json,application/json" class="hidden" onchange="importBackup(this)">
 
@@ -200,6 +192,19 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
   <div class="panel" style="max-width:700px;margin:8vh auto;padding:18px">
     <div class="row"><h2 id="costOverviewTitle" style="margin:0">💶 Kostenübersicht</h2><button class="secondary" onclick="hideCostOverview()" aria-label="Schließen">✕</button></div>
     <div id="costOverviewContent"></div>
+  </div>
+</div>
+
+<div id="infoSettings" class="hidden" role="dialog" aria-modal="true" aria-labelledby="infoSettingsTitle" style="position:fixed;inset:0;z-index:1001;background:#0008;overflow:auto;padding:18px">
+  <div class="panel" style="max-width:700px;margin:8vh auto;padding:18px">
+    <div class="row"><h2 id="infoSettingsTitle" style="margin:0">⚙️ Info/Settings</h2><button class="secondary" onclick="hideInfoSettings()" aria-label="Schließen">✕</button></div>
+    <div class="actions" style="margin-top:14px">
+      <button class="secondary" onclick="hideInfoSettings();showCostOverview()">💶 Kostenübersicht</button>
+      <button class="secondary" onclick="backup()">💾 Sichern (JSON)</button>
+      <button class="secondary" onclick="document.getElementById('importInput').click()">📥 Import</button>
+      <button class="secondary" onclick="showStorageInfo()">ℹ️ Speicherung</button>
+    </div>
+    <div class="muted" style="margin-top:10px">Fahrzeugdaten werden lokal auf diesem Gerät gespeichert. Erstelle regelmäßig eine JSON-Sicherung.</div>
   </div>
 </div>
 
@@ -357,6 +362,8 @@ function status(v){
   let d=new Date(v.tuv+"T00:00:00"), now=new Date(), days=(d-now)/86400000;
   return days<0?'<span class="badge danger">TÜV fällig</span>':days<45?'<span class="badge warn">TÜV bald</span>':'<span class="badge">TÜV OK</span>';
 }
+function showInfoSettings(){document.getElementById('infoSettings').classList.remove('hidden');}
+function hideInfoSettings(){document.getElementById('infoSettings').classList.add('hidden');}
 function showCostOverview(){
   const modal=document.getElementById('costOverview');
   const content=document.getElementById('costOverviewContent');
@@ -406,16 +413,14 @@ function render(){
       }
     });
   });
+  const appointmentClass=overdue>0?'term-red':upcoming>0?(db.vehicles.some(v=>(v.reminders||[]).some(r=>!r.done&&r.date&&((new Date(r.date+"T00:00:00")-now)/86400000)<=14&&((new Date(r.date+"T00:00:00")-now)/86400000)>=0)|| (v.tuv&&((new Date(v.tuv+"T00:00:00")-now)/86400000)<=14&&((new Date(v.tuv+"T00:00:00")-now)/86400000)>=0))?'term-yellow':'term-green'):'';
   document.getElementById('dashboard').innerHTML=`
     <div class="stat-grid">
       <div class="stat"><span>Fahrzeuge</span><b>${db.vehicles.length}</b></div>
-       <div class="stat"><span>Autos / Motorräder</span><b>${db.vehicles.filter(v=>v.type==='car').length} / ${db.vehicles.filter(v=>v.type==='motorcycle').length}</b></div>
-      <div class="stat"><span>Kilometer</span><b>${totalKm?totalKm.toLocaleString('de-DE'):'–'}</b></div>
-      <div class="stat" role="button" tabindex="0" style="cursor:pointer" onclick="showAppointments()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showAppointments()}"><span>📅 Termine & Wartung prüfen</span><b>${overdue+upcoming} Termine · ${maintenanceDue} prüfen</b><div class="muted">Tippen für alle Termine</div></div>
-      <div class="stat"><span>Kraftstoffkosten</span><b>${euro(db.vehicles.reduce((sum,v)=>sum+(v.fuelLogs||[]).reduce((a,r)=>a+num(r.price),0),0))}</b></div>
-    </div>
-    ${overdue?`<div class="notice">⚠️ ${overdue} Erinnerung${overdue===1?'':'en'} ist fällig.</div>`:''}
-    ${upcoming?`<div class="notice success">🔔 ${upcoming} Termin${upcoming===1?'':'e'} stehen in den nächsten 60 Tagen an.</div>`:''}`;
+      <div class="stat"><span>Autos / Motorräder</span><b>${db.vehicles.filter(v=>v.type==='car').length} / ${db.vehicles.filter(v=>v.type==='motorcycle').length}</b></div>
+      <div class="stat full-width"><span>Kilometer</span><b>${totalKm?totalKm.toLocaleString('de-DE'):'–'}</b></div>
+      <div class="stat full-width ${appointmentClass}" role="button" tabindex="0" style="cursor:pointer" onclick="showAppointments()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showAppointments()}"><span>📅 Termine & Wartung prüfen</span><b>${overdue+upcoming} Termine · ${maintenanceDue} prüfen</b><div class="muted">Tippen für alle Termine</div></div>
+    </div>`;
   // Fahrzeuge mit der neuesten Änderung stehen oben. Alte Einträge ohne Zeitstempel bleiben darunter.
   const vs=db.vehicles.filter(v=>`${v.name} ${v.plate} ${v.model} ${v.kba||''} ${vehicleType(v)}`.toLowerCase().includes(q))
     .slice().sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));

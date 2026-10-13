@@ -139,6 +139,21 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .unlock-garage{position:absolute;right:4px;top:5px;width:62px;height:64px;border-radius:13px;background:#d5e7d8;display:grid;place-items:center;font-size:35px;border:2px dashed #18864b}.lock-visual-only .unlock-track-label{display:none}.lock-visual-only{padding:18px}.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .unlock-track.unlocked{background:#d5e7d8}
 
+
+.entry-form-overlay{position:fixed;inset:0;z-index:1100;background:#0009;display:flex;align-items:center;justify-content:center;padding:14px;overflow:auto}
+.entry-form-panel{width:100%;max-width:520px;max-height:92dvh;overflow:auto;border-radius:18px;background:var(--panel, #fff);padding:18px;box-shadow:0 18px 60px #0003}
+.entry-form-panel h2{font-size:20px;margin:0 0 14px}
+.entry-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.entry-form-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.entry-form-field.full{grid-column:1/-1}
+.entry-form-field label{font-size:13px;font-weight:700;color:var(--text, #263238)}
+.entry-form-field input,.entry-form-field select,.entry-form-field textarea{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line, #ccd3d8);border-radius:10px;padding:10px 11px;font:inherit;background:var(--bg, #fff);color:inherit}
+.entry-form-field textarea{min-height:76px;resize:vertical}
+.entry-form-check{display:flex;align-items:center;gap:9px;min-height:44px}
+.entry-form-actions{display:flex;gap:10px;margin-top:16px}
+.entry-form-actions button{flex:1}
+@media(max-width:420px){.entry-form-grid{grid-template-columns:1fr}.entry-form-field.full{grid-column:auto}}
+
 </style>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
@@ -186,6 +201,20 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 </section>
 </main>
 
+
+
+<div id="entryFormOverlay" class="entry-form-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="entryFormTitle" onclick="if(event.target===this)closeEntryForm()">
+  <div class="entry-form-panel">
+    <h2 id="entryFormTitle">Eintrag</h2>
+    <form id="entryForm" onsubmit="submitEntryForm(event)">
+      <div id="entryFormFields" class="entry-form-grid"></div>
+      <div class="entry-form-actions">
+        <button type="button" class="secondary" onclick="closeEntryForm()">Abbrechen</button>
+        <button type="submit">Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <div id="photoZoomOverlay" class="photo-zoom-overlay hidden" onclick="closePhotoZoom(event)">
   <button class="photo-zoom-close" type="button" onclick="closePhotoZoom()">×</button>
@@ -851,15 +880,20 @@ async function deletePhoto(index){
   current.photos.splice(index,1);logHistory('Foto gelöscht','Ein Foto wurde entfernt');if(await save())renderDetail();
 }
 async function addReminder(){
-  const title=prompt("Woran soll erinnert werden?","Service / TÜV / Reifen");
-  if(!title)return;
-  const date=prompt("Datum (JJJJ-MM-TT):",new Date().toISOString().slice(0,10));
-  if(!date)return;
-  const note=prompt("Notiz (optional):","")||"";
-  current.reminders=current.reminders||[];
-  current.reminders.push({title,date,note,done:false});logHistory('Termin/Erinnerung angelegt',`${title} · ${date}`);
-  if(await save())renderDetail();
+  const today=new Date().toISOString().slice(0,10);
+  openEntryForm('Erinnerung / Termin hinzufügen',[
+    {name:'title',label:'Titel',type:'text',value:'',placeholder:'z. B. TÜV, Inspektion, Ölwechsel',required:true,full:true},
+    {name:'date',label:'Datum',type:'date',value:today,required:true},
+    {name:'note',label:'Notiz (optional)',type:'textarea',value:'',full:true}
+  ],async d=>{
+    if(!d.title.trim()){alert('Bitte einen Titel eingeben.');return;}
+    current.reminders=current.reminders||[];
+    current.reminders.push({title:d.title.trim(),date:d.date,note:d.note||'',done:false});
+    logHistory('Termin/Erinnerung angelegt',`${d.title.trim()} · ${d.date}`);
+    if(await save())renderDetail();
+  });
 }
+
 async function toggleReminder(i){
   current.reminders[i].done=!current.reminders[i].done;logHistory(current.reminders[i].done?'Termin erledigt markiert':'Termin wieder geöffnet',current.reminders[i].title||'Erinnerung');if(await save())renderDetail();
 }
@@ -908,45 +942,107 @@ function openDocument(i){
 async function deleteDocument(i){
   const d=current.documents[i];current.documents.splice(i,1);logHistory('Dokument gelöscht',d?.name||'Dokument');if(await save())renderDetail();
 }
-async function addFuelLog(){
-  const date=prompt('Tankdatum (JJJJ-MM-TT):',new Date().toISOString().slice(0,10));if(!date)return;
-  const km=prompt('Kilometerstand:',current.km||'');if(km===null)return;
-  const liters=prompt('Getankte Liter:', '');if(liters===null)return;
-  const price=prompt('Gesamtpreis in Euro:', '');if(price===null)return;
-  const pricePerLiter=num(liters)>0?(num(price)/num(liters)).toFixed(3):'';
-  const fullTank=confirm('Wurde der Tank vollständig gefüllt?');
-  const note=prompt('Notiz (optional):','')||'';
-  if(num(liters)<=0||num(price)<0||num(km)<0){alert('Bitte gültige Liter-, Preis- und Kilometerwerte eingeben.');return;}
-  current.fuelLogs=current.fuelLogs||[];current.fuelLogs.push({date,km:String(km),liters:String(liters),price:String(price),pricePerLiter,fullTank,note});
-  if(num(km)>num(current.km)){current.km=String(Math.round(num(km)));current.kmHistory=current.kmHistory||[];current.kmHistory.push({date,km:current.km,note:'Tankbuch'});}
-  logHistory('Tankvorgang erfasst',`${liters} l · ${euro(price)} · ${date}`);if(await save())renderDetail();
+let entryFormSaveHandler = null;
+function openEntryForm(title, fields, onSave){
+  const overlay=document.getElementById('entryFormOverlay');
+  const host=document.getElementById('entryFormFields');
+  document.getElementById('entryFormTitle').textContent=title;
+  entryFormSaveHandler=onSave;
+  host.innerHTML=fields.map((f,i)=>{
+    const id='entryField_'+i;
+    if(f.type==='checkbox'){
+      return `<div class="entry-form-field full"><label class="entry-form-check"><input id="${id}" name="${esc(f.name)}" type="checkbox" ${f.value?'checked':''}> <span>${esc(f.label)}</span></label></div>`;
+    }
+    let control='';
+    if(f.type==='select'){
+      control=`<select id="${id}" name="${esc(f.name)}" ${f.required?'required':''}>${(f.options||[]).map(o=>`<option value="${esc(o.value)}" ${String(o.value)===String(f.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
+    }else if(f.type==='textarea'){
+      control=`<textarea id="${id}" name="${esc(f.name)}" placeholder="${esc(f.placeholder||'')}" ${f.required?'required':''}>${esc(f.value??'')}</textarea>`;
+    }else{
+      control=`<input id="${id}" name="${esc(f.name)}" type="${f.type||'text'}" value="${esc(f.value??'')}" placeholder="${esc(f.placeholder||'')}" ${f.required?'required':''} ${f.min!==undefined?`min="${esc(String(f.min))}"`:''} ${f.step!==undefined?`step="${esc(String(f.step))}"`:''}>`;
+    }
+    return `<div class="entry-form-field ${f.full?'full':''}"><label for="${id}">${esc(f.label)}${f.required?' *':''}</label>${control}</div>`;
+  }).join('');
+  overlay.classList.remove('hidden');
+  const first=host.querySelector('input:not([type=checkbox]),select,textarea');
+  if(first) setTimeout(()=>first.focus(),50);
 }
+function closeEntryForm(){
+  document.getElementById('entryFormOverlay')?.classList.add('hidden');
+  entryFormSaveHandler=null;
+}
+async function submitEntryForm(event){
+  event.preventDefault();
+  if(!entryFormSaveHandler)return;
+  const form=document.getElementById('entryForm');
+  if(!form.reportValidity())return;
+  const data={};
+  new FormData(form).forEach((value,key)=>data[key]=value);
+  form.querySelectorAll('input[type=checkbox]').forEach(input=>data[input.name]=input.checked);
+  const handler=entryFormSaveHandler;
+  closeEntryForm();
+  await handler(data);
+}
+async function addFuelLog(){
+  const today=new Date().toISOString().slice(0,10);
+  openEntryForm('Tankvorgang erfassen',[
+    {name:'date',label:'Tankdatum',type:'date',value:today,required:true},
+    {name:'km',label:'Kilometerstand (km)',type:'number',value:current.km||'',min:0,step:1,required:true},
+    {name:'liters',label:'Getankte Liter',type:'number',value:'',min:0.01,step:0.01,required:true},
+    {name:'price',label:'Gesamtpreis (€)',type:'number',value:'',min:0,step:0.01,required:true},
+    {name:'fullTank',label:'Tank vollständig gefüllt',type:'checkbox',value:true},
+    {name:'note',label:'Notiz (optional)',type:'textarea',value:'',full:true}
+  ],async d=>{
+    const liters=num(d.liters),price=num(d.price),km=num(d.km);
+    if(liters<=0||price<0||km<0){alert('Bitte gültige Liter-, Preis- und Kilometerwerte eingeben.');return;}
+    const pricePerLiter=(price/liters).toFixed(3);
+    current.fuelLogs=current.fuelLogs||[];
+    current.fuelLogs.push({date:d.date,km:String(d.km),liters:String(d.liters),price:String(d.price),pricePerLiter,fullTank:!!d.fullTank,note:d.note||''});
+    if(km>num(current.km)){current.km=String(Math.round(km));current.kmHistory=current.kmHistory||[];current.kmHistory.push({date:d.date,km:current.km,note:'Tankbuch'});}
+    logHistory('Tankvorgang erfasst',`${d.liters} l · ${euro(d.price)} · ${d.date}`);
+    if(await save())renderDetail();
+  });
+}
+
 async function deleteFuelLog(i){const f=current?.fuelLogs?.[i];if(!f||!confirm('Tankvorgang löschen?'))return;current.fuelLogs.splice(i,1);logHistory('Tankvorgang gelöscht',`${f.date||''} · ${f.liters||''} l`);if(await save())renderDetail();}
 async function addTire(){
-  const season=prompt('Reifensatz (Sommer/Winter/Ganzjahr):','Sommer');if(!season)return;
-  const brand=prompt('Hersteller / Modell:','')||'';
-  const size=prompt('Reifengröße (z. B. 205/55 R16):','')||'';
-  const dot=prompt('DOT-Nummer (optional):','')||'';
-  const treadDepth=prompt('Profiltiefe in mm (optional):','')||'';
-  const status=prompt('Status (montiert/eingelagert):','montiert')||'montiert';
-  const date=prompt('Datum (JJJJ-MM-TT):',new Date().toISOString().slice(0,10))||'';
-  const cost=prompt('Kosten in Euro:', '0')||'0';
-  const note=prompt('Lagerort / Notiz (optional):','')||'';
-  current.tires=current.tires||[];current.tires.push({season,brand,size,dot,treadDepth,status,date,cost,note});
-  logHistory('Reifensatz erfasst',`${season} · ${size} · ${status}`);if(await save())renderDetail();
+  const today=new Date().toISOString().slice(0,10);
+  openEntryForm('Reifensatz hinzufügen',[
+    {name:'season',label:'Reifensatz',type:'select',value:'Sommer',options:[{value:'Sommer',label:'Sommerreifen'},{value:'Winter',label:'Winterreifen'},{value:'Ganzjahr',label:'Ganzjahresreifen'}],required:true},
+    {name:'status',label:'Status',type:'select',value:'montiert',options:[{value:'montiert',label:'Montiert'},{value:'eingelagert',label:'Eingelagert'}],required:true},
+    {name:'brand',label:'Hersteller / Modell',value:''},
+    {name:'size',label:'Reifengröße',value:'',placeholder:'z. B. 205/55 R16'},
+    {name:'dot',label:'DOT-Nummer (optional)',value:''},
+    {name:'treadDepth',label:'Profiltiefe (mm)',type:'number',value:'',min:0,step:0.1},
+    {name:'date',label:'Datum',type:'date',value:today,required:true},
+    {name:'cost',label:'Kosten (€)',type:'number',value:'0',min:0,step:0.01,required:true},
+    {name:'note',label:'Lagerort / Notiz',type:'textarea',value:'',full:true}
+  ],async d=>{
+    current.tires=current.tires||[];
+    current.tires.push({season:d.season,brand:d.brand||'',size:d.size||'',dot:d.dot||'',treadDepth:d.treadDepth||'',status:d.status,date:d.date,cost:d.cost||'0',note:d.note||''});
+    logHistory('Reifensatz erfasst',`${d.season} · ${d.size||'ohne Größenangabe'} · ${d.status}`);
+    if(await save())renderDetail();
+  });
 }
-async function editTire(i){const t=current?.tires?.[i];if(!t)return;
-  const season=prompt('Reifensatz:',t.season||'');if(season===null)return;
-  const brand=prompt('Hersteller / Modell:',t.brand||'');if(brand===null)return;
-  const size=prompt('Reifengröße:',t.size||'');if(size===null)return;
-  const dot=prompt('DOT-Nummer:',t.dot||'');if(dot===null)return;
-  const treadDepth=prompt('Profiltiefe in mm:',t.treadDepth||'');if(treadDepth===null)return;
-  const status=prompt('Status (montiert/eingelagert):',t.status||'montiert');if(status===null)return;
-  const date=prompt('Datum (JJJJ-MM-TT):',t.date||'');if(date===null)return;
-  const cost=prompt('Kosten in Euro:',t.cost||'0');if(cost===null)return;
-  const note=prompt('Lagerort / Notiz:',t.note||'');if(note===null)return;
-  current.tires[i]={...t,season,brand,size,dot,treadDepth,status,date,cost,note};logHistory('Reifensatz bearbeitet',`${season} · ${size}`);if(await save())renderDetail();
+async function editTire(i){
+  const t=current?.tires?.[i];if(!t)return;
+  openEntryForm('Reifensatz bearbeiten',[
+    {name:'season',label:'Reifensatz',type:'select',value:t.season||'Sommer',options:[{value:'Sommer',label:'Sommerreifen'},{value:'Winter',label:'Winterreifen'},{value:'Ganzjahr',label:'Ganzjahresreifen'}],required:true},
+    {name:'status',label:'Status',type:'select',value:t.status||'montiert',options:[{value:'montiert',label:'Montiert'},{value:'eingelagert',label:'Eingelagert'}],required:true},
+    {name:'brand',label:'Hersteller / Modell',value:t.brand||''},
+    {name:'size',label:'Reifengröße',value:t.size||''},
+    {name:'dot',label:'DOT-Nummer',value:t.dot||''},
+    {name:'treadDepth',label:'Profiltiefe (mm)',type:'number',value:t.treadDepth||'',min:0,step:0.1},
+    {name:'date',label:'Datum',type:'date',value:t.date||'',required:true},
+    {name:'cost',label:'Kosten (€)',type:'number',value:t.cost||'0',min:0,step:0.01,required:true},
+    {name:'note',label:'Lagerort / Notiz',type:'textarea',value:t.note||'',full:true}
+  ],async d=>{
+    Object.assign(t,{season:d.season,brand:d.brand||'',size:d.size||'',dot:d.dot||'',treadDepth:d.treadDepth||'',status:d.status,date:d.date,cost:d.cost||'0',note:d.note||''});
+    logHistory('Reifensatz geändert',`${d.season} · ${d.size||''} · ${d.status}`);
+    if(await save())renderDetail();
+  });
 }
+
 async function deleteTire(i){const t=current?.tires?.[i];if(!t||!confirm('Reifensatz löschen?'))return;current.tires.splice(i,1);logHistory('Reifensatz gelöscht',`${t.season||''} · ${t.size||''}`);if(await save())renderDetail();}
 function renderHistory(v){const h=(v.history||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).slice(0,100);if(!h.length)return '<div class="empty">Noch keine Historieneinträge. Neue Änderungen werden künftig protokolliert.</div>';return h.map(x=>`<div class="history-entry"><b>${esc(x.action||'Änderung')}</b><div class="muted">${esc((x.date||'').replace('T',' ').slice(0,16))}</div>${x.details?`<div>${esc(x.details)}</div>`:''}</div>`).join('');}
 async function addHistoryNote(){const note=prompt('Notiz für die Fahrzeughistorie:','');if(!note)return;logHistory('Notiz',note);if(await save())renderDetail();}

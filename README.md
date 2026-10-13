@@ -13,11 +13,14 @@ Mobile PWA zur lokalen Verwaltung von Autos und Motorrädern. Fahrzeugdaten und 
 - Reifenverwaltung mit Saison, Größe, DOT, Profiltiefe, Status und Kosten
 - Dokumentenverwaltung mit Kategorie, Notiz und optionalem Ablaufdatum
 - Fotos per Kamera/Galerie und Fotovergrößerung
-- Termine mit Kalenderexport (.ics) und Benachrichtigungen während die App geöffnet ist
+- Termine bearbeiten, nach offen/demnächst/überfällig/erledigt filtern, mit Vorlauf-Erinnerung und Kalenderexport (.ics)
+- Systembenachrichtigungen mit Service Worker, sofern Browserberechtigung erteilt und App aktiv/geöffnet ist
 - CSV-Bericht pro Fahrzeug und für den gesamten Fuhrpark
 - Druckbericht pro Fahrzeug, im Druckdialog als PDF speicherbar
 - JSON-Sicherung und Import
 - Offline-Nutzung nach dem ersten Laden
+
+Hinweis: Ohne zusätzlichen Push-Dienst sind Erinnerungen bei vollständig geschlossener App nicht zuverlässig garantiert.
 
 ## Datensicherheit
 - Beim ersten Laden werden vorhandene lokale Daten aus dem alten Speicher in IndexedDB übernommen, bevor der alte Eintrag entfernt wird.

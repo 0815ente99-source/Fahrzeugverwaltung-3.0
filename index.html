@@ -194,6 +194,14 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
   <button class="back" onclick="showHome()">← Zurück zur Übersicht</button>
   <div class="panel">
     <div class="title">📅 Alle Termine <button class="info-dot" aria-label="Information zu Terminen" onclick="showInfoText(&quot;Alle Termine&quot;,&quot;Hier siehst du Termine aus allen Fahrzeugen mit Datum, Status und zugehörigem Fahrzeug. Erledigte Termine kannst du wieder öffnen.&quot;)">i</button></div>
+    <div class="actions" style="margin-top:10px" aria-label="Termine filtern">
+      <button class="secondary" id="filterAll" onclick="setAppointmentFilter('all')">Alle</button>
+      <button class="secondary" id="filterOpen" onclick="setAppointmentFilter('open')">Offen</button>
+      <button class="secondary" id="filterUpcoming" onclick="setAppointmentFilter('upcoming')">Demnächst</button>
+      <button class="secondary" id="filterOverdue" onclick="setAppointmentFilter('overdue')">Überfällig</button>
+      <button class="secondary" id="filterDone" onclick="setAppointmentFilter('done')">Erledigt</button>
+    </div>
+    <div id="appointmentSummary" class="muted"></div>
     <div id="appointmentList"></div>
     <div class="actions" id="notificationActionArea"><button class="secondary" id="notificationEnableButton" onclick="enableAppointmentNotifications()">🔔 Benachrichtigungen aktivieren</button></div>
     
@@ -559,11 +567,12 @@ function renderDetail(){
   <div id="overviewTab" class="tab active">
     <div class="panel"><b>🚦 Wartungsampel <button class="info-dot" aria-label="Information zur Wartungsampel" onclick="showInfoText(&quot;Wartungsampel&quot;,&quot;Berücksichtigt TÜV, offene Erinnerungen, Dokumentabläufe und erfasste Reifentiefe. Für automatische Wartungsintervalle bitte Erinnerungen anlegen.&quot;)">i</button></b><div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><b>${esc(maintenanceState(v).label)}</b></div></div>
     <div class="panel"><b>Erinnerungen</b>
-      ${reminders.length?reminders.slice().sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map((r,i)=>`
+      ${reminders.length?reminders.map((r,i)=>({r,i})).sort((a,b)=>String(a.r.date||'').localeCompare(String(b.r.date||''))).slice(0,5).map(({r,i})=>`
         <div class="item">
           <div class="row"><b>${esc(r.title)}</b><span>${esc(r.date)}</span></div>
-          <div class="muted">${r.done?'✓ Erledigt':'Offen'}${r.note?' · '+esc(r.note):''}</div>
+          <div class="muted">${r.done?'✓ Erledigt':'Offen'}${r.note?' · '+esc(r.note):''}${Number(r.leadDays)>0&&!r.done?' · Erinnerung '+esc(String(r.leadDays))+' Tage vorher':''}</div>
           <div class="item-actions">
+            <button class="secondary" onclick="editReminder('${esc(current.id)}',${i})">✏️ Bearbeiten</button>
             <button class="secondary" onclick="toggleReminder(${i})">${r.done?'↩ Offen':'✓ Erledigt'}</button>
             <button class="secondary" onclick="deleteReminder(${i})">Löschen</button>
           </div>
@@ -641,54 +650,87 @@ function renderDetail(){
     </div>
   </div>`;
 }
-async function enableAppointmentNotifications(){
-  const button=document.getElementById('notificationEnableButton');
-  // Nutzerwunsch: Schaltfläche nach dem ersten Antippen dauerhaft ausblenden.
-  try{localStorage.setItem('fuhrpark_notification_button_used_v1','1');}catch(_){}
-  if(button)button.remove();
-  const area=document.getElementById('notificationActionArea');if(area&&!area.children.length)area.remove();
-  if(!('Notification' in window)){alert('Dieser Browser unterstützt keine Benachrichtigungen.');return;}
-  const permission=await Notification.requestPermission();
-  if(permission!=='granted'){alert('Benachrichtigungen wurden nicht erlaubt. Die Schaltfläche bleibt wie gewünscht ausgeblendet.');return;}
-  alert('Benachrichtigungen sind aktiviert. Diese Version prüft Termine nur, solange die App geöffnet ist. Für zuverlässige Push-Nachrichten bei geschlossener App ist ein Push-Dienst erforderlich.');
-  checkAppointmentNotifications();
+let appointmentFilter='all';
+function localDateKey(date=new Date()){
+  return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
 }
-function syncNotificationButton(){if(localStorage.getItem('fuhrpark_notification_button_used_v1')==='1'){document.getElementById('notificationEnableButton')?.remove();const a=document.getElementById('notificationActionArea');if(a&&!a.children.length)a.remove();}}
-function checkAppointmentNotifications(){
+async function enableAppointmentNotifications(){
+  if(!('Notification' in window)){alert('Dieser Browser unterstützt keine Systembenachrichtigungen. Du kannst die Termine weiterhin in der App sehen.');return;}
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted'){alert('Benachrichtigungen wurden nicht erlaubt. Du kannst sie später erneut aktivieren.');return;}
+    alert('Benachrichtigungen sind erlaubt. Termine werden geprüft, wenn die App geöffnet ist. Eine zuverlässige Erinnerung bei vollständig geschlossener App ist ohne zusätzlichen Push-Dienst nicht garantiert.');
+    checkAppointmentNotifications();
+    syncNotificationButton();
+  }catch(e){console.error(e);alert('Die Benachrichtigungseinstellung konnte nicht geändert werden.');}
+}
+function syncNotificationButton(){
+  const button=document.getElementById('notificationEnableButton');
+  if(!button)return;
+  if(!('Notification' in window)){button.textContent='🔔 Benachrichtigungen nicht verfügbar';button.disabled=true;return;}
+  if(Notification.permission==='granted'){button.textContent='🔔 Benachrichtigungen erlaubt';button.disabled=true;}
+  else if(Notification.permission==='denied'){button.textContent='🔔 Im Browser blockiert';button.disabled=true;}
+  else{button.textContent='🔔 Benachrichtigungen aktivieren';button.disabled=false;}
+}
+async function checkAppointmentNotifications(){
   if(!('Notification' in window)||Notification.permission!=='granted')return;
-  const now=new Date(); const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  db.vehicles.forEach(v=>(v.reminders||[]).forEach(r=>{
-    if(!r.done&&r.date===today){
-      const key='fuhrpark-notified-'+v.id+'-'+r.date+'-'+r.title;
-      if(!localStorage.getItem(key)){
-        try{new Notification('Fahrzeugtermin: '+(r.title||'Termin'),{body:(v.name||'Fahrzeug')+(v.plate?' · '+v.plate:'')+(r.note?' — '+r.note:''),icon:'./icon-192.png'});localStorage.setItem(key,'1');}catch(e){console.error(e);}
-      }
+  const today=localDateKey();
+  for(const v of db.vehicles){
+    for(const r of (v.reminders||[])){
+      if(r.done||!r.date||!/^\d{4}-\d{2}-\d{2}$/.test(r.date))continue;
+      const due=new Date(r.date+'T00:00:00');const now=new Date(today+'T00:00:00');
+      const days=Math.round((due-now)/86400000);const lead=Math.max(0,Math.min(30,Number(r.leadDays)||0));
+      if(days<0||days>lead)continue;
+      const key='fuhrpark-notified-v2-'+v.id+'-'+r.date+'-'+(r.title||'Termin');
+      if(localStorage.getItem(key))continue;
+      const body=(v.name||'Fahrzeug')+(v.plate?' · '+v.plate:'')+' — '+(days===0?'Heute fällig':days===1?'Morgen fällig':'in '+days+' Tagen fällig')+(r.note?' · '+r.note:'');
+      try{
+        const registration=('serviceWorker' in navigator)?await navigator.serviceWorker.ready:null;
+        if(registration && registration.showNotification){await registration.showNotification('Fahrzeugtermin: '+(r.title||'Termin'),{body,icon:'./icon-192.png',tag:key});}
+        else{new Notification('Fahrzeugtermin: '+(r.title||'Termin'),{body,icon:'./icon-192.png'});}
+        localStorage.setItem(key,'1');
+      }catch(e){console.warn('Benachrichtigung konnte nicht angezeigt werden',e);}
     }
-  }));
+  }
 }
 function showAppointments(){
   document.getElementById('home').classList.add('hidden');
   document.getElementById('detail').classList.add('hidden');
   document.getElementById('appointments').classList.remove('hidden');
-  animatePage('appointments');
-  renderAppointments();
-  syncNotificationButton();
-  animatePage('appointments');
+  animatePage('appointments');renderAppointments();syncNotificationButton();
 }
+function setAppointmentFilter(filter){appointmentFilter=filter;renderAppointments();}
 function renderAppointments(){
   const host=document.getElementById('appointmentList'); if(!host)return;
-  const items=[];
+  const items=[];const today=localDateKey();
   db.vehicles.forEach(v=>(v.reminders||[]).forEach((r,i)=>items.push({v,r,i})));
-  items.sort((a,b)=>String(a.r.date||'').localeCompare(String(b.r.date||'')));
-  if(!items.length){host.innerHTML='<div class="empty">Noch keine Termine gespeichert.</div>';return;}
-  host.innerHTML=items.map(({v,r,i})=>{
+  items.sort((a,b)=>String(a.r.date||'9999-99-99').localeCompare(String(b.r.date||'9999-99-99')));
+  const open=items.filter(x=>!x.r.done);
+  const filtered=items.filter(({r})=>{
+    if(appointmentFilter==='done')return !!r.done;
+    if(appointmentFilter==='open')return !r.done;
+    if(appointmentFilter==='upcoming')return !r.done&&!!r.date&&r.date>=today;
+    if(appointmentFilter==='overdue')return !r.done&&!!r.date&&r.date<today;
+    return true;
+  });
+  const counts={all:items.length,open:open.length,upcoming:open.filter(x=>x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length,done:items.filter(x=>x.r.done).length};
+  Object.entries(counts).forEach(([key,count])=>{const b=document.getElementById(({all:'filterAll',open:'filterOpen',upcoming:'filterUpcoming',overdue:'filterOverdue',done:'filterDone'})[key]);if(b){b.textContent=({all:'Alle',open:'Offen',upcoming:'Demnächst',overdue:'Überfällig',done:'Erledigt'})[key]+' ('+count+')';b.style.background=appointmentFilter===key?'var(--blue)':'#e7edf2';b.style.color=appointmentFilter===key?'#fff':'var(--blue)';}});
+  const summary=document.getElementById('appointmentSummary');if(summary)summary.textContent=`${counts.overdue} überfällig · ${counts.upcoming} demnächst · ${counts.done} erledigt`;
+  if(!filtered.length){host.innerHTML='<div class="empty">Für diesen Filter gibt es keine Termine.</div>';return;}
+  host.innerHTML=filtered.map(({v,r,i})=>{
     const vehicle=esc([v.name||'Fahrzeug',v.plate||''].filter(Boolean).join(' · '));
-    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(r.date||'Ohne Datum')}${r.done?' · Erledigt':' · Offen'}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="muted">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:''}</div></div>`;
+    const dateStatus=!r.date?'Ohne Datum':r.date<today&&!r.done?'Überfällig':r.done?'Erledigt':r.date===today?'Heute':'Offen';
+    const lead=Number(r.leadDays)>0&&!r.done?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
+    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(r.date||'Ohne Datum')} · ${dateStatus}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="muted">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">↩ Wieder öffnen</button>`}</div></div>`;
   }).join('');
 }
 async function markAppointmentDone(vehicleId,index){
   const v=db.vehicles.find(x=>x.id===vehicleId); if(!v||!v.reminders||!v.reminders[index])return;
-  v.reminders[index].done=!v.reminders[index].done; v.updatedAt=new Date().toISOString(); if(await save())renderAppointments();
+  const previous=current;current=v;
+  v.reminders[index].done=!v.reminders[index].done;
+  logHistory(v.reminders[index].done?'Termin erledigt markiert':'Termin wieder geöffnet',v.reminders[index].title||'Erinnerung');
+  const ok=await save();current=previous;
+  if(ok){renderAppointments();if(previous&&previous.id===v.id)renderDetail();}
 }
 function icsEscape(value){return String(value||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');}
 function exportReminderToCalendar(vehicleId,index){
@@ -904,20 +946,36 @@ async function deletePhoto(index){
   current.photos.splice(index,1);logHistory('Foto gelöscht','Ein Foto wurde entfernt');if(await save())renderDetail();
 }
 async function addReminder(){
-  const today=new Date().toISOString().slice(0,10);
   openEntryForm('Erinnerung / Termin hinzufügen',[
     {name:'title',label:'Titel',type:'text',value:'',placeholder:'z. B. TÜV, Inspektion, Ölwechsel',required:true,full:true},
-    {name:'date',label:'Datum',type:'date',value:today,required:true},
+    {name:'date',label:'Datum',type:'date',value:localDateKey(),required:true},
+    {name:'leadDays',label:'Erinnerung vorher',type:'select',value:'0',options:[{value:'0',label:'Am Fälligkeitstag'},{value:'1',label:'1 Tag vorher'},{value:'3',label:'3 Tage vorher'},{value:'7',label:'7 Tage vorher'},{value:'14',label:'14 Tage vorher'},{value:'30',label:'30 Tage vorher'}]},
     {name:'note',label:'Notiz (optional)',type:'textarea',value:'',full:true}
   ],async d=>{
     if(!d.title.trim()){alert('Bitte einen Titel eingeben.');return;}
     current.reminders=current.reminders||[];
-    current.reminders.push({title:d.title.trim(),date:d.date,note:d.note||'',done:false});
+    current.reminders.push({title:d.title.trim(),date:d.date,note:d.note||'',leadDays:Number(d.leadDays)||0,done:false});
     logHistory('Termin/Erinnerung angelegt',`${d.title.trim()} · ${d.date}`);
     if(await save())renderDetail();
   });
 }
 
+async function editReminder(vehicleId,index){
+  const v=db.vehicles.find(x=>x.id===vehicleId);const r=v&&(v.reminders||[])[index];if(!v||!r){alert('Termin nicht gefunden.');return;}
+  openEntryForm('Termin / Erinnerung bearbeiten',[
+    {name:'title',label:'Titel',type:'text',value:r.title||'',required:true,full:true},
+    {name:'date',label:'Datum',type:'date',value:r.date||localDateKey(),required:true},
+    {name:'leadDays',label:'Erinnerung vorher',type:'select',value:String(Number(r.leadDays)||0),options:[{value:'0',label:'Am Fälligkeitstag'},{value:'1',label:'1 Tag vorher'},{value:'3',label:'3 Tage vorher'},{value:'7',label:'7 Tage vorher'},{value:'14',label:'14 Tage vorher'},{value:'30',label:'30 Tage vorher'}]},
+    {name:'note',label:'Notiz (optional)',type:'textarea',value:r.note||'',full:true}
+  ],async d=>{
+    if(!d.title.trim()){alert('Bitte einen Titel eingeben.');return;}
+    const previous=current;current=v;
+    r.title=d.title.trim();r.date=d.date;r.note=d.note||'';r.leadDays=Number(d.leadDays)||0;
+    logHistory('Termin/Erinnerung bearbeitet',`${r.title} · ${r.date}`);
+    const ok=await save();current=previous;
+    if(ok){if(previous&&previous.id===v.id)renderDetail();else renderAppointments();}
+  });
+}
 async function toggleReminder(i){
   current.reminders[i].done=!current.reminders[i].done;logHistory(current.reminders[i].done?'Termin erledigt markiert':'Termin wieder geöffnet',current.reminders[i].title||'Erinnerung');if(await save())renderDetail();
 }
@@ -1138,6 +1196,7 @@ window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();deferredInstallPrompt=e;
   document.getElementById('installArea').classList.remove('hidden');
 });
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkAppointmentNotifications();});
 window.addEventListener('appinstalled',()=>{
   document.getElementById('installArea').classList.add('hidden');
   deferredInstallPrompt=null;

@@ -158,6 +158,69 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
+
+<style>
+/* Mobile calendar layout: keep event details readable and actions below the text */
+.calendar-event {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 14px 0;
+}
+.calendar-event-main {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.calendar-event-date {
+  display: block;
+  line-height: 1.45;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-size: 14px;
+}
+.calendar-event-title {
+  font-size: 18px;
+  line-height: 1.3;
+}
+.calendar-event-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  width: 100%;
+  margin-top: 2px;
+}
+.calendar-event-actions button {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.25;
+  min-height: 42px;
+  padding: 8px 7px;
+  font-size: 13px;
+}
+@media (min-width: 700px) {
+  .calendar-event {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: 16px;
+  }
+  .calendar-event-actions {
+    display: flex;
+    flex-wrap: wrap;
+    width: auto;
+    justify-content: flex-end;
+  }
+  .calendar-event-actions button {
+    width: auto;
+    white-space: nowrap;
+  }
+}
+</style>
+
 </head>
 <body class="booting">
 <header>

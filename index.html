@@ -734,11 +734,26 @@ async function enableAppointmentNotifications(){
 }
 function syncNotificationButton(){
   const button=document.getElementById('notificationEnableButton');
+  const area=document.getElementById('notificationActionArea');
   if(!button)return;
-  if(!('Notification' in window)){button.textContent='🔔 Benachrichtigungen nicht verfügbar';button.disabled=true;return;}
-  if(Notification.permission==='granted'){button.textContent='🔔 Benachrichtigungen erlaubt';button.disabled=true;}
-  else if(Notification.permission==='denied'){button.textContent='🔔 Im Browser blockiert';button.disabled=true;}
-  else{button.textContent='🔔 Benachrichtigungen aktivieren';button.disabled=false;}
+  const permission=('Notification' in window)?Notification.permission:'unsupported';
+  const granted=permission==='granted';
+  // Verstecke die gesamte Button-Zeile, nicht nur den Button.
+  if(area)area.hidden=granted;
+  button.hidden=granted;
+  button.style.display=granted?'none':'';
+  button.setAttribute('aria-hidden',granted?'true':'false');
+  if(permission==='unsupported'){
+    if(area)area.hidden=false;
+    button.hidden=false;button.style.display='';
+    button.textContent='🔔 Benachrichtigungen nicht verfügbar';button.disabled=true;return;
+  }
+  if(permission==='granted')return;
+  if(permission==='denied'){
+    button.textContent='🔔 Im Browser blockiert';button.disabled=true;
+  }else{
+    button.textContent='🔔 Benachrichtigungen aktivieren';button.disabled=false;
+  }
 }
 async function checkAppointmentNotifications(){
   if(!('Notification' in window)||Notification.permission!=='granted')return;
@@ -1264,7 +1279,8 @@ window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();deferredInstallPrompt=e;
   document.getElementById('installArea').classList.remove('hidden');
 });
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkAppointmentNotifications();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){syncNotificationButton();checkAppointmentNotifications();}});
+if('Notification' in window){try{navigator.permissions?.query({name:'notifications'}).then(p=>{p.onchange=syncNotificationButton;}).catch(()=>{});}catch(e){}}
 window.addEventListener('appinstalled',()=>{
   document.getElementById('installArea').classList.add('hidden');
   deferredInstallPrompt=null;
@@ -1295,7 +1311,7 @@ window.addEventListener('popstate',()=>{
   keepAppOpenOnBack();
 });
 document.getElementById('search').addEventListener('input',render);
-load().then(()=>{render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');});checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');document.body.classList.remove('booting');});
+load().then(()=>{syncNotificationButton();render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');});checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');document.body.classList.remove('booting');});
 </script>
 </body>
 </html>

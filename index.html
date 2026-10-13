@@ -165,15 +165,23 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <link rel="apple-touch-icon" href="./icon-192.png">
 
 <style>
-/* Mobile calendar layout: keep event details readable and actions below the text */
+/* Mobile calendar layout: visible separate cards with spacing and left accent */
 .calendar-event {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   gap: 10px;
-  padding: 14px 0;
+  padding: 14px;
+  margin: 12px 0;
+  border: 1px solid #d5dee8;
+  border-left: 5px solid var(--blue, #245b8f);
+  border-radius: 14px;
+  background: #f7f9fc;
+  box-shadow: 0 2px 5px rgba(20,45,70,.06);
 }
+.calendar-event:has(.done), .calendar-event.done { border-left-color: #16804a; background: #f1faf4; }
+.calendar-event:has(.overdue), .calendar-event.overdue { border-left-color: #c0392b; background: #fff5f4; }
 .calendar-event-main {
   width: 100%;
   min-width: 0;

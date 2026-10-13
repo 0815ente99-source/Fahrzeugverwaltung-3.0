@@ -725,9 +725,33 @@ function switchTab(btn,id){
   const tab=document.getElementById(id);tab.style.animation='none';void tab.offsetWidth;tab.style.animation='';
 }
 function renderKmHistory(v){
-  const h=(v.kmHistory||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const h=(v.kmHistory||[]).map((entry,index)=>({...entry,_index:index})).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
   if(!h.length)return '<div class="empty">Noch keine Kilometerstände erfasst.</div>';
-  return h.map(x=>`<div class="table-row"><span>${esc(x.date)}</span><b>${Number(x.km).toLocaleString('de-DE')} km</b><span>${esc(x.note||'')}</span></div>`).join('');
+  return h.map(x=>`<div class="table-row" style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center"><div><span>${esc(x.date||'')}</span><br><b>${Number(x.km).toLocaleString('de-DE')} km</b><div class="muted">${esc(x.note||'')}</div></div><div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end"><button class="secondary" onclick="editKmEntry(${x._index})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteKmEntry(${x._index})">🗑</button></div></div>`).join('');
+}
+function syncCurrentKmFromHistory(){
+  const h=(current.kmHistory||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  if(h.length)current.km=String(h[0].km);
+}
+async function editKmEntry(index){
+  const entry=(current.kmHistory||[])[index];if(!entry)return;
+  const km=prompt('Kilometerstand:',String(entry.km??''));if(km===null)return;
+  const n=Number(String(km).replace(',','.'));
+  if(!Number.isFinite(n)||n<0){alert('Bitte einen gültigen Kilometerstand eingeben.');return;}
+  const date=prompt('Datum (JJJJ-MM-TT):',String(entry.date||new Date().toISOString().slice(0,10)));if(date===null||!date.trim())return;
+  const note=prompt('Notiz (optional):',String(entry.note||''));if(note===null)return;
+  const before=`${entry.km} km · ${entry.date||''}`;
+  entry.km=String(Math.round(n));entry.date=date.trim();entry.note=note;
+  syncCurrentKmFromHistory();
+  logHistory('Kilometerhistorie bearbeitet',`${before} → ${entry.km} km · ${entry.date}`);
+  if(await save())renderDetail();
+}
+async function deleteKmEntry(index){
+  const entry=(current.kmHistory||[])[index];if(!entry)return;
+  if(!confirm(`Kilometerstand vom ${entry.date||'unbekannten Datum'} (${entry.km} km) wirklich löschen?`))return;
+  current.kmHistory.splice(index,1);syncCurrentKmFromHistory();
+  logHistory('Kilometerhistorie gelöscht',`${entry.km} km · ${entry.date||''}`);
+  if(await save())renderDetail();
 }
 function newVehicle(){
   current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',power:'',displacement:'',fuelType:'',year:'',kba:'',vin:'',km:'',tuv:'',note:'',titlePhoto:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[],fuelLogs:[],tires:[],history:[],createdAt:new Date().toISOString()};

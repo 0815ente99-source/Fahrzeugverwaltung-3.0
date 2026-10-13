@@ -70,6 +70,12 @@ button:active{transform:scale(.98)}
 .detail-head-text{min-width:0;flex:1}
 .detail-head-text .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0}
+.vehicle-title-photo{width:48px;height:48px;object-fit:cover;border-radius:12px;border:1px solid var(--line);flex-shrink:0}
+.info-dot{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;border:1px solid currentColor;background:transparent;color:var(--muted);font-size:12px;font-weight:700;padding:0;margin-left:5px;vertical-align:middle}
+.vehicle-note textarea{width:100%;min-height:56px;resize:vertical}
+.quick-actions-main{width:100%;margin:10px 0 12px;min-height:48px}
+.quick-action-overlay{position:fixed;inset:0;z-index:1002;background:#0008;display:flex;align-items:center;justify-content:center;padding:18px}
+.quick-action-overlay .panel{width:100%;max-width:420px}
 .quick-grid button{min-height:58px;text-align:left;padding:10px 12px}
 .quick-grid button span{display:block;font-size:20px;margin-bottom:2px}
 .quick-grid button small{font-size:12px}
@@ -172,8 +178,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <section id="appointments" class="hidden">
   <button class="back" onclick="showHome()">← Zurück zur Übersicht</button>
   <div class="panel">
-    <div class="title">📅 Alle Termine</div>
-    <div class="muted">Termine aus allen Fahrzeugen, jeweils mit zugehörigem Fahrzeug.</div>
+    <div class="title">📅 Alle Termine <button class="info-dot" aria-label="Information zu Terminen" onclick="showInfoText(&quot;Alle Termine&quot;,&quot;Hier siehst du Termine aus allen Fahrzeugen mit Datum, Status und zugehörigem Fahrzeug. Erledigte Termine kannst du wieder öffnen.&quot;)">i</button></div>
     <div id="appointmentList"></div>
     <div class="actions" id="notificationActionArea"><button class="secondary" id="notificationEnableButton" onclick="enableAppointmentNotifications()">🔔 Benachrichtigungen aktivieren</button></div>
     <div class="muted">Hinweis: Browser-Benachrichtigungen dieser Version werden nur geprüft, solange die App geöffnet ist. Zuverlässige Push-Nachrichten bei geschlossener App benötigen einen Push-Dienst.</div>
@@ -187,6 +192,18 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
   <img id="photoZoomImage" src="" alt="Vergrößertes Fahrzeugfoto">
 </div>
 
+
+<div id="vehicleActions" class="hidden quick-action-overlay" role="dialog" aria-modal="true" aria-labelledby="vehicleActionsTitle" onclick="if(event.target===this)hideVehicleActions()">
+  <div class="panel">
+    <div class="row"><h2 id="vehicleActionsTitle" style="margin:0">Fahrzeugfunktionen</h2><button class="secondary" onclick="hideVehicleActions()" aria-label="Schließen">✕</button></div>
+    <div class="actions" style="margin-top:12px">
+      <button onclick="hideVehicleActions();addRepair()">🔧 Service</button>
+      <button class="secondary" onclick="hideVehicleActions();addReminder()">🔔 Erinnerung</button>
+      <button class="secondary" onclick="hideVehicleActions();addKmEntry()">📈 Kilometer</button>
+      <button class="secondary" onclick="hideVehicleActions();document.getElementById('galleryInput').click()">📷 Foto hinzufügen</button>
+    </div>
+  </div>
+</div>
 
 <div id="costOverview" class="hidden" role="dialog" aria-modal="true" aria-labelledby="costOverviewTitle" style="position:fixed;inset:0;z-index:1000;background:#0008;overflow:auto;padding:18px">
   <div class="panel" style="max-width:700px;margin:8vh auto;padding:18px">
@@ -479,7 +496,7 @@ function renderDetail(){
 
   document.getElementById('detailContent').innerHTML=`
   <div class="detail-head">
-    <div class="vehicle-icon">${vehicleIcon(v)}</div>
+    <div class="vehicle-icon">${v.titlePhoto?`<img class="vehicle-title-photo" src="${v.titlePhoto}" alt="Titelbild">`:vehicleIcon(v)}</div>
     <div class="detail-head-text">
       <div class="title">${esc(v.name||'Fahrzeug')}</div>
       <div class="muted">${esc(v.plate||'Kein Kennzeichen')} · ${esc(v.model||'')}</div>
@@ -487,20 +504,19 @@ function renderDetail(){
   </div>
 
   <div class="panel">
-    <div class="row"><span>Fahrzeugtyp</span><b>${vehicleIcon(v)} ${vehicleType(v)}</b></div>
+    <div class="row"><span>Fahrzeugtyp</span><b>${vehicleType(v)}</b></div>
+    ${v.power?`<div class="row"><span>Leistung</span><b>${esc(v.power)}</b></div>`:''}
+    ${v.displacement?`<div class="row"><span>Hubraum</span><b>${esc(v.displacement)}${String(v.displacement).match(/\s*(cm³|ccm|l)$/i)?'':' cm³'}</b></div>`:''}
+    ${v.fuelType?`<div class="row"><span>Kraftstoffart</span><b>${esc(v.fuelType)}</b></div>`:''}
     <div class="row"><span>Kilometerstand</span><b>${v.km?Number(v.km).toLocaleString('de-DE')+' km':'–'}</b></div>
     ${v.tuv?`<div class="row"><span>TÜV</span><b>${esc(v.tuv)}</b></div>`:''}
     ${v.kba?`<div class="row"><span>KBA-Nummer</span><b>${esc(v.kba)}</b></div>`:''}
     ${v.vin?`<div class="row"><span>FIN</span><b>${esc(v.vin)}</b></div>`:''}
     <div class="row"><span>Gesamtkosten</span><b>${euro(total)}</b></div>
   </div>
+  <div class="panel vehicle-note"><label for="vehicleNoteInput"><b>Notiz</b></label><textarea id="vehicleNoteInput" placeholder="Notiz zu diesem Fahrzeug …">${esc(v.note||'')}</textarea><button class="secondary" style="width:100%;margin-top:6px" onclick="saveVehicleNote()">Notiz speichern</button></div>
 
-  <div class="quick-grid">
-    <button onclick="addRepair()"><span>🔧</span><small>Service</small></button>
-    <button onclick="addReminder()"><span>🔔</span><small>Erinnerung</small></button>
-    <button onclick="addKmEntry()"><span>📈</span><small>Kilometer</small></button>
-    <button onclick="document.getElementById('galleryInput').click()"><span>📷</span><small>Foto</small></button>
-  </div>
+  <button class="quick-actions-main" onclick="showVehicleActions()">＋ Fahrzeugfunktionen</button>
 
   <div class="nav-tabs">
     <button class="active" onclick="switchTab(this,'overviewTab')">Übersicht</button>
@@ -512,7 +528,7 @@ function renderDetail(){
   </div>
 
   <div id="overviewTab" class="tab active">
-    <div class="panel"><b>🚦 Wartungsampel</b><div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><b>${esc(maintenanceState(v).label)}</b></div><div class="muted">Berücksichtigt TÜV, offene Erinnerungen, Dokumentabläufe und erfasste Reifentiefe. Für automatische Wartungsintervalle bitte Erinnerungen anlegen.</div></div>
+    <div class="panel"><b>🚦 Wartungsampel <button class="info-dot" aria-label="Information zur Wartungsampel" onclick="showInfoText(&quot;Wartungsampel&quot;,&quot;Berücksichtigt TÜV, offene Erinnerungen, Dokumentabläufe und erfasste Reifentiefe. Für automatische Wartungsintervalle bitte Erinnerungen anlegen.&quot;)">i</button></b><div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><b>${esc(maintenanceState(v).label)}</b></div></div>
     <div class="panel"><b>Erinnerungen</b>
       ${reminders.length?reminders.slice().sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map((r,i)=>`
         <div class="item">
@@ -571,7 +587,7 @@ function renderDetail(){
       </div>
       <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden" onchange="addPhoto(this)">
       <input id="galleryInput" type="file" accept="image/*" multiple class="hidden" onchange="addPhotos(this)">
-      <div class="photo-grid">${photos.map((p,i)=>`<div class="photo-wrap"><img class="photo" src="${p}" alt="Fahrzeugfoto" onclick="openPhotoZoom(this.src)" style="cursor:zoom-in"><button class="photo-delete" onclick="deletePhoto(${i})">×</button></div>`).join('')}</div>
+      <div class="photo-grid">${photos.map((p,i)=>`<div class="photo-wrap"><img class="photo" src="${p}" alt="Fahrzeugfoto" onclick="openPhotoZoom(this.src)" style="cursor:zoom-in"><button class="secondary small-action" onclick="setTitlePhoto(${i})" style="width:100%;margin-top:4px">${current.titlePhoto===p?'✓ Titelbild':'Als Titelbild'}</button><button class="photo-delete" onclick="deletePhoto(${i})">×</button></div>`).join('')}</div>
       ${!photos.length?'<div class="empty">Noch keine Fotos.</div>':''}
     </div>
     <div class="panel"><b>Dokumente</b>
@@ -659,6 +675,19 @@ function exportReminderToCalendar(vehicleId,index){
   alert('Kalenderdatei erstellt. Öffne die .ics-Datei auf dem Smartphone und füge den Termin deinem Kalender hinzu.');
 }
 
+function showVehicleActions(){document.getElementById('vehicleActions')?.classList.remove('hidden');}
+function hideVehicleActions(){document.getElementById('vehicleActions')?.classList.add('hidden');}
+function showInfoText(title,message){alert(title+'\\n\\n'+message);}
+async function saveVehicleNote(){
+  if(!current)return;
+  current.note=document.getElementById('vehicleNoteInput')?.value||'';
+  if(await save())renderDetail();
+}
+async function setTitlePhoto(index){
+  if(!current||!current.photos||!current.photos[index])return;
+  current.titlePhoto=current.photos[index];
+  if(await save())renderDetail();
+}
 function switchTab(btn,id){
   document.querySelectorAll('.nav-tabs button').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -672,7 +701,7 @@ function renderKmHistory(v){
   return h.map(x=>`<div class="table-row"><span>${esc(x.date)}</span><b>${Number(x.km).toLocaleString('de-DE')} km</b><span>${esc(x.note||'')}</span></div>`).join('');
 }
 function newVehicle(){
-  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',year:'',kba:'',vin:'',km:'',tuv:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[],fuelLogs:[],tires:[],history:[],createdAt:new Date().toISOString()};
+  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',power:'',displacement:'',fuelType:'',year:'',kba:'',vin:'',km:'',tuv:'',note:'',titlePhoto:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[],fuelLogs:[],tires:[],history:[],createdAt:new Date().toISOString()};
   formVehicle('Neues Fahrzeug');
 }
 function editVehicle(){formVehicle('Fahrzeug bearbeiten');}
@@ -687,6 +716,9 @@ function formVehicle(title){
   <label>Bezeichnung</label><input id="f_name" value="${esc(v.name)}" placeholder="z.B. Fahrzeug 01">
   <label>Kennzeichen</label><input id="f_plate" value="${esc(v.plate)}">
   <label>Marke / Modell</label><input id="f_model" value="${esc(v.model)}">
+  <label>Leistung (PS oder kW)</label><input id="f_power" value="${esc(v.power||'')}" placeholder="z. B. 150 PS oder 110 kW">
+  <label>Hubraum (cm³)</label><input id="f_displacement" value="${esc(v.displacement||'')}" inputmode="decimal" placeholder="z. B. 1998">
+  <label>Kraftstoffart</label><select id="f_fuelType"><option value="">Bitte auswählen</option>${['Benzin','Diesel','Elektro','Hybrid','Plug-in-Hybrid','Autogas (LPG)','Erdgas (CNG)','Wasserstoff','Sonstiges'].map(x=>`<option value="${x}" ${v.fuelType===x?'selected':''}>${x}</option>`).join('')}</select>
   <label>Baujahr</label><input id="f_year" value="${esc(v.year)}" inputmode="numeric">
   <label>KBA-Nummer (HSN / TSN)</label><input id="f_kba" value="${esc(v.kba||'')}" placeholder="z.B. 0603 / BQF">
   <label>FIN / VIN</label><input id="f_vin" value="${esc(v.vin)}">
@@ -701,6 +733,9 @@ async function saveVehicle(){
   v.name=document.getElementById('f_name').value.trim();
   v.plate=document.getElementById('f_plate').value.trim();
   v.model=document.getElementById('f_model').value.trim();
+  v.power=document.getElementById('f_power').value.trim();
+  v.displacement=document.getElementById('f_displacement').value.trim();
+  v.fuelType=document.getElementById('f_fuelType').value;
   v.year=document.getElementById('f_year').value.trim();
   v.kba=document.getElementById('f_kba').value.trim();
   v.vin=document.getElementById('f_vin').value.trim();

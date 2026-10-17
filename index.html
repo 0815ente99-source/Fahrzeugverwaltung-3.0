@@ -608,7 +608,7 @@ function render(){
       ${status(v)}
     </div>
     <div class="row"><span class="muted">Kilometerstand</span><b>${v.km?Number(v.km).toLocaleString('de-DE')+' km':'–'}</b></div>
-    <div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><span>${esc(maintenanceState(v).label)}</span><span class="muted">· zuletzt geändert ${esc((v.updatedAt||v.createdAt||'').slice(0,10)||'unbekannt')}</span></div>
+    <div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><span>${esc(maintenanceState(v).label)}</span></div>
   </div>`).join('');
 }
 // Einheitliches kurzes Feedback für sämtliche Buttons, auch für dynamisch erzeugte.

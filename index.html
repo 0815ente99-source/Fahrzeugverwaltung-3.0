@@ -307,6 +307,31 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 @media(min-width:700px){#appointments .appointments-heading{flex-direction:row;align-items:center;justify-content:space-between}#appointments .appointments-create{width:auto;min-width:220px}#appointmentList .calendar-event{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(220px,280px)!important;column-gap:14px!important}#appointmentList .calendar-event-actions{align-self:center}}
 
 </style>
+
+<style id="appointment-distance-and-border-v27">
+/* v26: deutlich sichtbare Kartenkontur und kompakte farbige Fälligkeitsanzeige */
+#appointmentList .calendar-event {
+  border: 2px solid #aab6c2 !important;
+  border-left-width: 5px !important;
+  box-shadow: 0 2px 5px rgba(20,45,70,.06) !important;
+}
+#appointmentList .calendar-event.urgency-overdue { border-left-color:#c62828 !important; }
+#appointmentList .calendar-event.urgency-today { border-left-color:#ef8c00 !important; }
+#appointmentList .calendar-event.urgency-soon { border-left-color:#d6b600 !important; }
+#appointmentList .calendar-event.urgency-later { border-left-color:#2e7d32 !important; }
+#appointmentList .calendar-event.urgency-unknown { border-left-color:#7b8794 !important; }
+#appointmentList .appointment-distance {
+  display:inline-block; margin-left:5px; padding:3px 7px; border-radius:6px;
+  font-size:11px; font-weight:750; line-height:1.25; vertical-align:middle;
+  color:#fff; background:#2e7d32; white-space:nowrap;
+}
+#appointmentList .urgency-overdue .appointment-distance { background:#c62828; }
+#appointmentList .urgency-today .appointment-distance { background:#ef8c00; color:#1f2933; }
+#appointmentList .urgency-soon .appointment-distance { background:#f2d34f; color:#29313a; }
+#appointmentList .urgency-unknown .appointment-distance { background:#7b8794; }
+:root[data-theme="dark"] #appointmentList .calendar-event { border-color:#667482 !important; }
+</style>
+
 </head>
 <body class="booting">
 <header>
@@ -934,9 +959,12 @@ function renderAppointments(){
   if(!filtered.length){host.innerHTML='<div class="empty">Für diesen Filter gibt es keine Termine.</div>';return;}
   host.innerHTML=filtered.map(({v,r,i})=>{
     const vehicle=esc(v.name||'Fahrzeug');
-    const dateStatus=!r.date?'Ohne Datum':r.date<today?'Überfällig':r.date===today?'Heute':'Offen';
+    const delta=r.date?Math.round((new Date(r.date+'T12:00:00').getTime()-new Date(today+'T12:00:00').getTime())/86400000):null;
+    const dateStatus=!r.date?'Ohne Datum':delta<0?'Überfällig':delta===0?'Heute':'Offen';
+    const urgencyClass=delta===null?'urgency-unknown':delta<0?'urgency-overdue':delta===0?'urgency-today':delta<=5?'urgency-soon':'urgency-later';
+    const distanceLabel=delta===null?'Kein Datum':delta<0?`${Math.abs(delta)} Tag(e) überfällig`:delta===0?'Heute fällig':delta===1?'Morgen':`in ${delta} Tagen`;
     const lead=Number(r.leadDays)>0?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
-    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus}</div><div class="calendar-event-title">${vehicle}</div><div class="calendar-event-vehicle">${esc(r.title||'Termin')}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button></div></div>`;
+    return `<div class="calendar-event ${urgencyClass}"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus} <span class="appointment-distance">${esc(distanceLabel)}</span></div><div class="calendar-event-title">${vehicle}</div><div class="calendar-event-vehicle">${esc(r.title||'Termin')}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button></div></div>`;
   }).join('');
 }
 async function markAppointmentDone(vehicleId,index){

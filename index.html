@@ -1377,7 +1377,7 @@ window.addEventListener('appinstalled',()=>{
   deferredInstallPrompt=null;
 });
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=23', {updateViaCache:'none'}).catch(()=>{});
 }
 // Android-Zurücktaste innerhalb der PWA abfangen: erst innerhalb der App zurückgehen,
 // auf der Startansicht bleiben statt die App durch den Zurück-Verlauf zu verlassen.

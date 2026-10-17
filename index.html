@@ -262,6 +262,29 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 }
 </style>
 
+<style id="appointment-overview-final-v24">
+/* Terminübersicht: kompakte Karten, gleich große Namen, Kennzeichen nie anzeigen */
+#appointmentList { display:flex; flex-direction:column; gap:12px; }
+#appointmentList .calendar-event {
+  display:flex !important; flex-direction:column !important; align-items:stretch !important;
+  gap:8px !important; margin:0 !important; padding:12px !important;
+  border:1px solid var(--line,#d5dee8) !important; border-left:4px solid var(--blue,#17324d) !important;
+  border-radius:12px !important; background:var(--card,#fff) !important;
+  box-shadow:0 2px 7px rgba(20,45,70,.07) !important;
+}
+#appointmentList .calendar-event-main { min-width:0; width:100%; }
+#appointmentList .calendar-event-title,
+#appointmentList .calendar-event-vehicle {
+  display:block; margin:3px 0 0 !important; font-size:16px !important;
+  font-weight:600 !important; line-height:1.35 !important; color:var(--text,#17212b) !important;
+  overflow-wrap:anywhere;
+}
+#appointmentList .calendar-event-date { font-size:13px !important; font-weight:600 !important; line-height:1.4; color:var(--muted,#68747e) !important; }
+#appointmentList .calendar-event-actions { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:7px !important; margin-top:3px !important; width:100% !important; }
+#appointmentList .calendar-event-actions button { min-width:0; min-height:38px; padding:7px 8px; font-size:12px; white-space:normal; }
+:root[data-theme="dark"] #appointmentList .calendar-event { background:var(--card,#1c2732) !important; border-color:var(--line,#35424e) !important; border-left-color:#7599bb !important; }
+@media(min-width:700px) { #appointmentList .calendar-event { display:grid !important; grid-template-columns:minmax(0,1fr) minmax(220px,300px) !important; column-gap:14px !important; } }
+</style>
 </head>
 <body class="booting">
 <header>

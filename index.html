@@ -193,9 +193,9 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  gap: 10px;
-  padding: 14px;
-  margin: 12px 0;
+  gap: 6px;
+  padding: 10px 12px;
+  margin: 10px 0;
   border: 1px solid #d5dee8;
   border-left: 5px solid var(--blue, #245b8f);
   border-radius: 14px;
@@ -217,7 +217,13 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
   font-size: 14px;
 }
 .calendar-event-title {
-  font-size: 18px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.calendar-event-vehicle {
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.3;
 }
 .calendar-event-actions {
@@ -291,13 +297,12 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <section id="appointments" class="hidden">
   <button class="back" onclick="showHome()">← Zurück zur Übersicht</button>
   <div class="panel">
-    <div class="title">📅 Alle Termine <button class="primary" style="float:right" onclick="createAppointmentFromOverview()">＋ Termin erstellen</button> <button class="info-dot" aria-label="Information zu Terminen" onclick="showInfoText(&quot;Alle Termine&quot;,&quot;Hier siehst du Termine aus allen Fahrzeugen mit Datum, Status und zugehörigem Fahrzeug. Erledigte Termine kannst du wieder öffnen.&quot;)">i</button></div>
+    <div class="title">📅 Alle Termine <button class="primary" style="float:right" onclick="createAppointmentFromOverview()">＋ Termin erstellen</button> <button class="info-dot" aria-label="Information zu Terminen" onclick="showInfoText(&quot;Alle Termine&quot;,&quot;Hier siehst du offene Termine aus allen Fahrzeugen. Erledigte Termine werden in dieser Übersicht ausgeblendet, bleiben aber gespeichert.&quot;)">i</button></div>
     <div class="actions" style="margin-top:10px" aria-label="Termine filtern">
       <button class="secondary" id="filterAll" onclick="setAppointmentFilter('all')">Alle</button>
       <button class="secondary" id="filterOpen" onclick="setAppointmentFilter('open')">Offen</button>
       <button class="secondary" id="filterUpcoming" onclick="setAppointmentFilter('upcoming')">Demnächst</button>
       <button class="secondary" id="filterOverdue" onclick="setAppointmentFilter('overdue')">Überfällig</button>
-      <button class="secondary" id="filterDone" onclick="setAppointmentFilter('done')">Erledigt</button>
     </div>
     <div id="appointmentSummary" class="muted"></div>
     <div id="appointmentList"></div>
@@ -871,24 +876,22 @@ function renderAppointments(){
   db.vehicles.forEach(v=>(v.reminders||[]).forEach((r,i)=>items.push({v,r,i})));
   items.sort((a,b)=>String(a.r.date||'9999-99-99').localeCompare(String(b.r.date||'9999-99-99')));
   const open=items.filter(x=>!x.r.done);
-  // Erledigte Termine bleiben gespeichert und sind über den Filter 'Erledigt' erreichbar,
-  // verschwinden aber aus der normalen Terminübersicht ('Alle').
-  const filtered=items.filter(({r})=>{
-    if(appointmentFilter==='done')return !!r.done;
-    if(appointmentFilter==='open'||appointmentFilter==='all')return !r.done;
-    if(appointmentFilter==='upcoming')return !r.done&&!!r.date&&r.date>=today;
-    if(appointmentFilter==='overdue')return !r.done&&!!r.date&&r.date<today;
-    return !r.done;
+  // Erledigte Termine bleiben vollständig gespeichert, werden aber in dieser Übersicht nicht angezeigt.
+  if(appointmentFilter==='done') appointmentFilter='all';
+  const filtered=open.filter(({r})=>{
+    if(appointmentFilter==='upcoming')return !!r.date&&r.date>=today;
+    if(appointmentFilter==='overdue')return !!r.date&&r.date<today;
+    return true;
   });
-  const counts={all:open.length,open:open.length,upcoming:open.filter(x=>x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length,done:items.filter(x=>x.r.done).length};
-  Object.entries(counts).forEach(([key,count])=>{const b=document.getElementById(({all:'filterAll',open:'filterOpen',upcoming:'filterUpcoming',overdue:'filterOverdue',done:'filterDone'})[key]);if(b){b.textContent=({all:'Alle',open:'Offen',upcoming:'Demnächst',overdue:'Überfällig',done:'Erledigt'})[key]+' ('+count+')';b.style.background=appointmentFilter===key?'var(--blue)':'#e7edf2';b.style.color=appointmentFilter===key?'#fff':'var(--blue)';}});
-  const summary=document.getElementById('appointmentSummary');if(summary)summary.textContent=`${counts.overdue} überfällig · ${counts.upcoming} demnächst · ${counts.done} erledigt`;
+  const counts={all:open.length,open:open.length,upcoming:open.filter(x=>x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length};
+  Object.entries(counts).forEach(([key,count])=>{const b=document.getElementById(({all:'filterAll',open:'filterOpen',upcoming:'filterUpcoming',overdue:'filterOverdue'})[key]);if(b){b.textContent=({all:'Alle',open:'Offen',upcoming:'Demnächst',overdue:'Überfällig'})[key]+' ('+count+')';b.style.background=appointmentFilter===key?'var(--blue)':'#e7edf2';b.style.color=appointmentFilter===key?'#fff':'var(--blue)';}});
+  const summary=document.getElementById('appointmentSummary');if(summary)summary.textContent=`${counts.overdue} überfällig · ${counts.upcoming} demnächst`;
   if(!filtered.length){host.innerHTML='<div class="empty">Für diesen Filter gibt es keine Termine.</div>';return;}
   host.innerHTML=filtered.map(({v,r,i})=>{
     const vehicle=esc(v.name||'Fahrzeug');
-    const dateStatus=!r.date?'Ohne Datum':r.date<today&&!r.done?'Überfällig':r.done?'Erledigt':r.date===today?'Heute':'Offen';
-    const lead=Number(r.leadDays)>0&&!r.done?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
-    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="calendar-event-vehicle">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">↩ Wieder öffnen</button>`}</div></div>`;
+    const dateStatus=!r.date?'Ohne Datum':r.date<today?'Überfällig':r.date===today?'Heute':'Offen';
+    const lead=Number(r.leadDays)>0?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
+    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus}</div><div class="calendar-event-title">${vehicle}</div><div class="calendar-event-vehicle">${esc(r.title||'Termin')}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button></div></div>`;
   }).join('');
 }
 async function markAppointmentDone(vehicleId,index){

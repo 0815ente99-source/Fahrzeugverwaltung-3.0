@@ -885,7 +885,7 @@ function renderAppointments(){
   const summary=document.getElementById('appointmentSummary');if(summary)summary.textContent=`${counts.overdue} überfällig · ${counts.upcoming} demnächst · ${counts.done} erledigt`;
   if(!filtered.length){host.innerHTML='<div class="empty">Für diesen Filter gibt es keine Termine.</div>';return;}
   host.innerHTML=filtered.map(({v,r,i})=>{
-    const vehicle=esc([v.name||'Fahrzeug',v.plate||''].filter(Boolean).join(' · '));
+    const vehicle=esc(v.name||'Fahrzeug');
     const dateStatus=!r.date?'Ohne Datum':r.date<today&&!r.done?'Überfällig':r.done?'Erledigt':r.date===today?'Heute':'Offen';
     const lead=Number(r.leadDays)>0&&!r.done?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
     return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="calendar-event-vehicle">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">↩ Wieder öffnen</button>`}</div></div>`;

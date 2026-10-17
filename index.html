@@ -557,7 +557,7 @@ function render(){
   if(!vs.length){list.innerHTML='<div class="empty">Noch keine Fahrzeuge angelegt.</div>';return;}
   list.innerHTML=vs.map(v=>`<div class="card" onclick="openVehicle('${esc(v.id)}')">
     <div class="vehicle-top">
-      <div class="vehicle-icon">${vehicleIcon(v)}</div>
+      <div class="vehicle-icon">${v.titlePhoto?`<img class="vehicle-title-photo" src="${v.titlePhoto}" alt="Titelbild von ${esc(v.name||'Fahrzeug')}" loading="lazy">`:vehicleIcon(v)}</div>
       <div style="min-width:0;flex:1"><div class="title">${esc(v.name||'Fahrzeug')}</div><div class="muted">${esc(v.plate||'Kein Kennzeichen')} · ${esc(v.model||'')}</div></div>
       ${status(v)}
     </div>
@@ -797,14 +797,16 @@ function renderAppointments(){
   db.vehicles.forEach(v=>(v.reminders||[]).forEach((r,i)=>items.push({v,r,i})));
   items.sort((a,b)=>String(a.r.date||'9999-99-99').localeCompare(String(b.r.date||'9999-99-99')));
   const open=items.filter(x=>!x.r.done);
+  // Erledigte Termine bleiben gespeichert und sind über den Filter 'Erledigt' erreichbar,
+  // verschwinden aber aus der normalen Terminübersicht ('Alle').
   const filtered=items.filter(({r})=>{
     if(appointmentFilter==='done')return !!r.done;
-    if(appointmentFilter==='open')return !r.done;
+    if(appointmentFilter==='open'||appointmentFilter==='all')return !r.done;
     if(appointmentFilter==='upcoming')return !r.done&&!!r.date&&r.date>=today;
     if(appointmentFilter==='overdue')return !r.done&&!!r.date&&r.date<today;
-    return true;
+    return !r.done;
   });
-  const counts={all:items.length,open:open.length,upcoming:open.filter(x=>x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length,done:items.filter(x=>x.r.done).length};
+  const counts={all:open.length,open:open.length,upcoming:open.filter(x=>x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length,done:items.filter(x=>x.r.done).length};
   Object.entries(counts).forEach(([key,count])=>{const b=document.getElementById(({all:'filterAll',open:'filterOpen',upcoming:'filterUpcoming',overdue:'filterOverdue',done:'filterDone'})[key]);if(b){b.textContent=({all:'Alle',open:'Offen',upcoming:'Demnächst',overdue:'Überfällig',done:'Erledigt'})[key]+' ('+count+')';b.style.background=appointmentFilter===key?'var(--blue)':'#e7edf2';b.style.color=appointmentFilter===key?'#fff':'var(--blue)';}});
   const summary=document.getElementById('appointmentSummary');if(summary)summary.textContent=`${counts.overdue} überfällig · ${counts.upcoming} demnächst · ${counts.done} erledigt`;
   if(!filtered.length){host.innerHTML='<div class="empty">Für diesen Filter gibt es keine Termine.</div>';return;}
@@ -1188,11 +1190,10 @@ async function addTire(){
     {name:'dot',label:'DOT-Nummer (optional)',value:''},
     {name:'treadDepth',label:'Profiltiefe (mm)',type:'number',value:'',min:0,step:0.1},
     {name:'date',label:'Datum',type:'date',value:today,required:true},
-    {name:'cost',label:'Kosten (€)',type:'number',value:'0',min:0,step:0.01,required:true},
     {name:'note',label:'Lagerort / Notiz',type:'textarea',value:'',full:true}
   ],async d=>{
     current.tires=current.tires||[];
-    current.tires.push({season:d.season,brand:d.brand||'',size:d.size||'',dot:d.dot||'',treadDepth:d.treadDepth||'',status:d.status,date:d.date,cost:d.cost||'0',note:d.note||''});
+    current.tires.push({season:d.season,brand:d.brand||'',size:d.size||'',dot:d.dot||'',treadDepth:d.treadDepth||'',status:d.status,date:d.date,cost:'0',note:d.note||''});
     logHistory('Reifensatz erfasst',`${d.season} · ${d.size||'ohne Größenangabe'} · ${d.status}`);
     if(await save())renderDetail();
   });
@@ -1233,7 +1234,11 @@ function vehicleReportRows(v){
 }
 function exportVehicleCSV(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;downloadText(`fuhrpark-${(v.plate||v.name||'fahrzeug').replace(/[^a-z0-9_-]/gi,'_')}.csv`,vehicleReportRows(v).map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
 function exportAllCSV(){const rows=[['Bereich','Datum','Fahrzeug','Kennzeichen','Details','Kilometer','Zusatz']];db.vehicles.forEach(v=>rows.push(...vehicleReportRows(v).slice(1)));downloadText('fuhrpark-gesamtbericht.csv',rows.map(row=>row.map(csvCell).join(';')).join('\r\n'),'text/csv;charset=utf-8');}
-function printVehicleReport(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;const rows=vehicleReportRows(v);const win=window.open('','_blank');if(!win){alert('Der Bericht wurde vom Browser blockiert. Erlaube bitte Pop-ups für die Fuhrpark-App und versuche es erneut.');return;}const body=rows.map((r,i)=>'<tr>'+r.map(c=>i===0?'<th>'+esc(c)+'</th>':'<td>'+esc(c)+'</td>').join('')+'</tr>').join('');win.document.open();win.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Fuhrparkbericht</title><style>body{font:12px Arial,sans-serif;padding:20px;color:#17212b}h1{font-size:20px}table{border-collapse:collapse;width:100%;font-size:10px}td,th{border:1px solid #bbb;padding:5px;text-align:left;vertical-align:top}th{background:#e8edf3}@media print{button{display:none}}</style></head><body><h1>Fahrzeugbericht: ${esc(v.name||'Fahrzeug')}</h1><p>${esc(v.plate||'')} · ${esc(v.model||'')} · erstellt am ${new Date().toLocaleDateString('de-DE')}</p><button onclick="window.print()">Drucken / als PDF speichern</button><table>${body}</table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);win.document.close();}
+function printVehicleReport(id){const v=db.vehicles.find(x=>x.id===id);if(!v)return;const rows=vehicleReportRows(v);const win=window.open('','_blank');if(!win){alert('Der Bericht wurde vom Browser blockiert. Erlaube bitte Pop-ups für die Fuhrpark-App und versuche es erneut.');return;}const body=rows.map((r,i)=>'<tr>'+r.map(c=>i===0?'<th>'+esc(c)+'</th>':'<td>'+esc(c)+'</td>').join('')+'</tr>').join('');win.document.open();win.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Fuhrparkbericht</title><style>body{font:12px Arial,sans-serif;padding:20px;color:#17212b}h1{font-size:20px}table{border-collapse:collapse;width:100%;font-size:10px}td,th{border:1px solid #bbb;padding:5px;text-align:left;vertical-align:top}th{background:#e8edf3}@media print{button{display:none}}
+/* Titelbilder auf der Startseite und im Fahrzeugkopf einheitlich darstellen */
+.vehicle-icon .vehicle-title-photo{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:cover;border-radius:10px;}
+.vehicle-top .vehicle-icon{width:64px;height:56px;flex:0 0 64px;overflow:hidden;border-radius:10px;}
+</style></head><body><h1>Fahrzeugbericht: ${esc(v.name||'Fahrzeug')}</h1><p>${esc(v.plate||'')} · ${esc(v.model||'')} · erstellt am ${new Date().toLocaleDateString('de-DE')}</p><button onclick="window.print()">Drucken / als PDF speichern</button><table>${body}</table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);win.document.close();}
 
 function formatBytes(n){
   if(n<1024)return n+' B';

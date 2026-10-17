@@ -10,7 +10,28 @@
 <title>Fuhrpark</title>
 <style>
 *{box-sizing:border-box}
-:root{--blue:#17324d;--bg:#f4f6f8;--card:#fff;--text:#17212b;--muted:#68747e;--line:#e5e9ed;--green:#18864b;--orange:#b56b00;--red:#b42318}
+:root{--blue:#17324d;--bg:#f4f6f8;--card:#fff;--text:#17212b;--muted:#68747e;--line:#e5e9ed;--green:#18864b;--orange:#b56b00;--red:#b42318;color-scheme:light}
+:root[data-theme="dark"]{--blue:#172b3d;--bg:#111820;--card:#1c2732;--text:#edf2f6;--muted:#a9b6c2;--line:#35424e;--green:#55c783;--orange:#f0b54c;--red:#ff8278;color-scheme:dark}
+:root[data-theme="dark"] body{background:var(--bg);color:var(--text)}
+:root[data-theme="dark"] .card,:root[data-theme="dark"] .panel,:root[data-theme="dark"] .stat{background:var(--card);border-color:var(--line);color:var(--text);box-shadow:0 2px 8px #0004}
+:root[data-theme="dark"] button.secondary,:root[data-theme="dark"] .back{background:#2a3947;color:#e8eff5}
+:root[data-theme="dark"] input,:root[data-theme="dark"] select,:root[data-theme="dark"] textarea,:root[data-theme="dark"] .search{background:#202c37;color:var(--text);border-color:#455361}
+:root[data-theme="dark"] .nav-tabs{background:#202c37}
+:root[data-theme="dark"] .nav-tabs button.active{background:#344656;color:#fff}
+:root[data-theme="dark"] .calendar-event{background:#202c37;border-color:#3a4a58;border-left-color:#7599bb}
+:root[data-theme="dark"] .calendar-event-date{color:#b9d7f0}
+:root[data-theme="dark"] .vehicle-icon{background:#2a3947}
+:root[data-theme="dark"] .badge{background:#244b37;color:#a6edc1}
+:root[data-theme="dark"] .badge.warn{background:#4b3b20;color:#ffd68a}
+:root[data-theme="dark"] .badge.danger{background:#512b2b;color:#ffb0aa}
+:root[data-theme="dark"] .notice{background:#4b3b20;color:#ffe0a3}
+:root[data-theme="dark"] .notice.success{background:#244b37;color:#b5f1c9}
+:root[data-theme="dark"] .stat.term-green{background:#203c2e;border-color:#356c4a}
+:root[data-theme="dark"] .stat.term-yellow{background:#42351e;border-color:#7a602c}
+:root[data-theme="dark"] .stat.term-red{background:#432626;border-color:#7c4141}
+:root[data-theme="dark"] .empty{color:#a9b6c2}
+:root[data-theme="dark"] .info-dot{color:#a9b6c2}
+:root[data-theme="dark"] .photo-zoom-close{background:#e8eff5;color:#172b3d}
 html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
 button,.card,.panel,.nav-tabs button,.tab{transition:transform .16s ease,background-color .2s ease,color .2s ease,box-shadow .2s ease,opacity .2s ease}
 button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
@@ -109,6 +130,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .calendar-event-main{min-width:0;width:100%;flex:1;overflow-wrap:anywhere}
 .calendar-event-date{font-weight:800;color:var(--blue);font-size:14px;line-height:1.4}
 .calendar-event-title{font-weight:750;font-size:17px;line-height:1.3;margin-top:5px;color:var(--text)}
+.calendar-event-vehicle{font-size:17px;font-weight:750;line-height:1.3;margin-top:5px;color:var(--text)}
 .calendar-event-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:4px;width:100%}
 .calendar-event-actions button{min-width:0;min-height:40px;padding:8px 9px;font-size:12px;white-space:normal}
 @media(min-width:700px){.calendar-event{flex-direction:row;align-items:flex-start}.calendar-event-main{flex:1}.calendar-event-actions{width:auto;max-width:340px;grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -328,6 +350,15 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <div id="infoSettings" class="hidden" role="dialog" aria-modal="true" aria-labelledby="infoSettingsTitle" style="position:fixed;inset:0;z-index:1001;background:#0008;overflow:auto;padding:18px">
   <div class="panel" style="max-width:700px;margin:8vh auto;padding:18px">
     <div class="row"><h2 id="infoSettingsTitle" style="margin:0">⚙️ Info/Settings</h2><button class="secondary" onclick="hideInfoSettings()" aria-label="Schließen">✕</button></div>
+    <div class="panel" style="margin:14px 0 8px;padding:12px">
+      <label for="themeSelect" style="font-size:14px;color:var(--text)">🎨 Darstellung</label>
+      <select id="themeSelect" onchange="setThemePreference(this.value)" aria-label="Darstellung auswählen" style="margin-top:8px;margin-bottom:0">
+        <option value="light">Hell (Lightmode)</option>
+        <option value="dark">Dunkel (Darkmode)</option>
+        <option value="auto">Automatisch (Geräteeinstellung)</option>
+      </select>
+      <div class="muted" style="margin-top:7px">Die Auswahl wird auf diesem Gerät gespeichert.</div>
+    </div>
     <div class="actions" style="margin-top:14px">
       <button class="secondary" onclick="hideInfoSettings();showCostOverview()">💶 Kostenübersicht</button>
       <button class="secondary" onclick="backup()">💾 Sichern (JSON)</button>
@@ -492,7 +523,22 @@ function status(v){
   let d=new Date(v.tuv+"T00:00:00"), now=new Date(), days=(d-now)/86400000;
   return days<0?'<span class="badge danger">TÜV fällig</span>':days<45?'<span class="badge warn">TÜV bald</span>':'<span class="badge">TÜV OK</span>';
 }
-function showInfoSettings(){document.getElementById('infoSettings').classList.remove('hidden');}
+const THEME_PREFERENCE_KEY='fuhrpark-theme-preference-v1';
+function getThemePreference(){try{return localStorage.getItem(THEME_PREFERENCE_KEY)||'auto';}catch(e){return 'auto';}}
+function applyThemePreference(preference){
+  const effective=preference==='auto'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):preference;
+  document.documentElement.dataset.theme=effective;
+  const meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.content=effective==='dark'?'#172b3d':'#f4f6f8';
+  const select=document.getElementById('themeSelect');if(select&&select.value!==preference)select.value=preference;
+}
+function setThemePreference(preference){
+  if(!['light','dark','auto'].includes(preference))preference='auto';
+  try{localStorage.setItem(THEME_PREFERENCE_KEY,preference);}catch(e){}
+  applyThemePreference(preference);
+}
+if(window.matchMedia){const themeMedia=window.matchMedia('(prefers-color-scheme: dark)');themeMedia.addEventListener?.('change',()=>{if(getThemePreference()==='auto')applyThemePreference('auto');});}
+applyThemePreference(getThemePreference());
+function showInfoSettings(){document.getElementById('infoSettings').classList.remove('hidden');document.getElementById('themeSelect').value=getThemePreference();}
 function hideInfoSettings(){document.getElementById('infoSettings').classList.add('hidden');}
 function showCostOverview(){
   const modal=document.getElementById('costOverview');

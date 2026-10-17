@@ -1432,7 +1432,7 @@ async function deleteVehicle(){
 const BACKUP_FOLDER_KEY='fuhrpark_backup_directory_handle_v1';
 async function idbGetKey(key){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);tx.oncomplete=()=>d.close();tx.onerror=()=>{d.close();reject(tx.error);};});}
 async function idbPutKey(key,value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,key);tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
-async function updateBackupFolderStatus(){const el=document.getElementById('backupFolderStatus');if(!el)return;try{const handle=await idbGetKey(BACKUP_FOLDER_KEY);el.textContent=handle?'Sicherungsordner: '+handle.name+' (gespeichert; Zugriff wird beim Backup geprüft)':'Sicherungsordner: noch nicht festgelegt';}catch(e){el.textContent='Sicherungsordner: Status nicht verfügbar';}}
+async function updateBackupFolderStatus(){const el=document.getElementById('backupFolderStatus');if(!el)return;try{const handle=await idbGetKey(BACKUP_FOLDER_KEY);el.textContent=handle?'Sicherungsordner: '+handle.name+' (gespeichert)':'Sicherungsordner: noch nicht festgelegt';}catch(e){el.textContent='Sicherungsordner: Status nicht verfügbar';}}
 async function chooseBackupFolder(){
   if(!window.isSecureContext || typeof window.showDirectoryPicker!=='function'){
     alert('Dieser Browser stellt keine dauerhafte Ordnerauswahl bereit. Die normale JSON-Sicherung funktioniert weiterhin über den Download. Bitte Chrome/Android aktualisieren oder die Sicherung nach dem Download im gewünschten Ordner ablegen.');return;
@@ -1445,7 +1445,7 @@ async function backup(){
   const json=JSON.stringify({...db,backupVersion:2,backupCreatedAt:new Date().toISOString()},null,2);
   try{
     const handle=await idbGetKey(BACKUP_FOLDER_KEY);
-    if(handle && typeof handle.getFile==='function'){
+    if(handle && typeof handle.getFileHandle==='function'){
       let permission=await handle.queryPermission({mode:'readwrite'});
       if(permission!=='granted')permission=await handle.requestPermission({mode:'readwrite'});
       if(permission==='granted'){
@@ -1457,7 +1457,7 @@ async function backup(){
       }
       alert('Der Ordnerzugriff wurde nicht erteilt. Es wird stattdessen der normale Download gestartet.');
     }
-  }catch(e){console.error('Backup in festen Ordner fehlgeschlagen:',e);alert('Speichern im festgelegten Ordner war nicht möglich. Es wird stattdessen der normale Download gestartet.');}
+  }catch(e){console.error('Backup in festen Ordner fehlgeschlagen:',e);alert('Speichern im festgelegten Ordner war nicht möglich. Details stehen in der Browser-Konsole. Es wird stattdessen der normale Download gestartet.');}
   const blob=new Blob([json],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 function installApp(){

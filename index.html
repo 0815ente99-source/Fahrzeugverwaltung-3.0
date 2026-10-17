@@ -269,7 +269,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 <section id="appointments" class="hidden">
   <button class="back" onclick="showHome()">← Zurück zur Übersicht</button>
   <div class="panel">
-    <div class="title">📅 Alle Termine <button class="info-dot" aria-label="Information zu Terminen" onclick="showInfoText(&quot;Alle Termine&quot;,&quot;Hier siehst du Termine aus allen Fahrzeugen mit Datum, Status und zugehörigem Fahrzeug. Erledigte Termine kannst du wieder öffnen.&quot;)">i</button></div>
+    <div class="title">📅 Alle Termine <button class="primary" style="float:right" onclick="createAppointmentFromOverview()">＋ Termin erstellen</button> <button class="info-dot" aria-label="Information zu Terminen" onclick="showInfoText(&quot;Alle Termine&quot;,&quot;Hier siehst du Termine aus allen Fahrzeugen mit Datum, Status und zugehörigem Fahrzeug. Erledigte Termine kannst du wieder öffnen.&quot;)">i</button></div>
     <div class="actions" style="margin-top:10px" aria-label="Termine filtern">
       <button class="secondary" id="filterAll" onclick="setAppointmentFilter('all')">Alle</button>
       <button class="secondary" id="filterOpen" onclick="setAppointmentFilter('open')">Offen</button>
@@ -730,6 +730,14 @@ let appointmentFilter='all';
 function localDateKey(date=new Date()){
   return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
 }
+function formatDateDE(value){
+  if(!value)return 'Ohne Datum';
+  const match=String(value).match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
+  if(match)return `${match[3]}.${match[2]}.${match[1]}`;
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return String(value);
+  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+}
 async function enableAppointmentNotifications(){
   if(!('Notification' in window)){alert('Dieser Browser unterstützt keine Systembenachrichtigungen. Du kannst die Termine weiterhin in der App sehen.');return;}
   try{
@@ -784,6 +792,26 @@ async function checkAppointmentNotifications(){
     }
   }
 }
+function createAppointmentFromOverview(){
+  if(!db.vehicles||!db.vehicles.length){alert('Bitte lege zuerst ein Fahrzeug an.');return;}
+  const fields=[
+    {name:'vehicleId',label:'Fahrzeug',type:'select',value:db.vehicles[0].id,required:true,options:db.vehicles.map(v=>({value:v.id,label:[v.name||'Fahrzeug',v.plate||''].filter(Boolean).join(' · ')})),full:true},
+    {name:'title',label:'Termingrund',type:'text',value:'',placeholder:'z. B. TÜV, Inspektion, Ölwechsel',required:true,full:true},
+    {name:'date',label:'Datum',type:'date',value:localDateKey(),required:true},
+    {name:'leadDays',label:'Erinnerung vorher',type:'select',value:'0',options:[{value:'0',label:'Am Fälligkeitstag'},{value:'1',label:'1 Tag vorher'},{value:'3',label:'3 Tage vorher'},{value:'7',label:'7 Tage vorher'},{value:'14',label:'14 Tage vorher'},{value:'30',label:'30 Tage vorher'}]},
+    {name:'note',label:'Notiz (optional)',type:'textarea',value:'',full:true}
+  ];
+  openEntryForm('Termin erstellen',fields,async d=>{
+    if(!d.title.trim()){alert('Bitte einen Termingrund eingeben.');return;}
+    const v=db.vehicles.find(x=>x.id===d.vehicleId);if(!v){alert('Bitte ein Fahrzeug auswählen.');return;}
+    const previous=current;current=v;
+    v.reminders=v.reminders||[];
+    v.reminders.push({title:d.title.trim(),date:d.date,note:d.note||'',leadDays:Number(d.leadDays)||0,done:false});
+    logHistory('Termin/Erinnerung angelegt',`${d.title.trim()} · ${formatDateDE(d.date)}`);
+    const ok=await save();current=previous;
+    if(ok){closeEntryForm();renderAppointments();}
+  });
+}
 function showAppointments(){
   document.getElementById('home').classList.add('hidden');
   document.getElementById('detail').classList.add('hidden');
@@ -814,7 +842,7 @@ function renderAppointments(){
     const vehicle=esc([v.name||'Fahrzeug',v.plate||''].filter(Boolean).join(' · '));
     const dateStatus=!r.date?'Ohne Datum':r.date<today&&!r.done?'Überfällig':r.done?'Erledigt':r.date===today?'Heute':'Offen';
     const lead=Number(r.leadDays)>0&&!r.done?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
-    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(r.date||'Ohne Datum')} · ${dateStatus}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="muted">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">↩ Wieder öffnen</button>`}</div></div>`;
+    return `<div class="calendar-event"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus}</div><div class="calendar-event-title">${esc(r.title||'Termin')}</div><div class="calendar-event-vehicle">${v.type==='motorcycle'?'🏍️':'🚗'} ${vehicle}${v.model?' · '+esc(v.model):''}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}${!r.done?`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`:`<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">↩ Wieder öffnen</button>`}</div></div>`;
   }).join('');
 }
 async function markAppointmentDone(vehicleId,index){
@@ -1238,6 +1266,10 @@ function printVehicleReport(id){const v=db.vehicles.find(x=>x.id===id);if(!v)ret
 /* Titelbilder auf der Startseite und im Fahrzeugkopf einheitlich darstellen */
 .vehicle-icon .vehicle-title-photo{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:cover;border-radius:10px;}
 .vehicle-top .vehicle-icon{width:64px;height:56px;flex:0 0 64px;overflow:hidden;border-radius:10px;}
+
+.calendar-event-title,.calendar-event-vehicle{font-size:1rem;font-weight:600;line-height:1.4;color:var(--text,#1f2937);margin-top:5px}
+.calendar-event-date{font-size:.9rem;font-weight:600}
+.calendar-event-vehicle{font-weight:600}
 </style></head><body><h1>Fahrzeugbericht: ${esc(v.name||'Fahrzeug')}</h1><p>${esc(v.plate||'')} · ${esc(v.model||'')} · erstellt am ${new Date().toLocaleDateString('de-DE')}</p><button onclick="window.print()">Drucken / als PDF speichern</button><table>${body}</table><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);win.document.close();}
 
 function formatBytes(n){

@@ -1105,12 +1105,25 @@ function formatDateDE(value){
   if(Number.isNaN(d.getTime()))return String(value);
   return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 }
+async function registerBackgroundAppointmentCheck(){
+  if(!('serviceWorker' in navigator))return {ok:false,reason:'service-worker-unsupported'};
+  try{
+    const registration=await navigator.serviceWorker.ready;
+    if(!('periodicSync' in registration))return {ok:false,reason:'periodic-sync-unsupported'};
+    await registration.periodicSync.register('fuhrpark-appointment-check',{minInterval:12*60*60*1000});
+    const tags=await registration.periodicSync.getTags();
+    return {ok:tags.includes('fuhrpark-appointment-check'),reason:tags.includes('fuhrpark-appointment-check')?'registered':'not-registered'};
+  }catch(error){console.warn('Hintergrundprüfung konnte nicht registriert werden:',error);return {ok:false,reason:'registration-failed'};}
+}
 async function enableAppointmentNotifications(){
   if(!('Notification' in window)){alert('Dieser Browser unterstützt keine Systembenachrichtigungen. Du kannst die Termine weiterhin in der App sehen.');return;}
   try{
     const permission=await Notification.requestPermission();
     if(permission!=='granted'){alert('Benachrichtigungen wurden nicht erlaubt. Du kannst sie später erneut aktivieren.');return;}
-    alert('Benachrichtigungen sind erlaubt. Termine werden geprüft, wenn die App geöffnet ist. Eine zuverlässige Erinnerung bei vollständig geschlossener App ist ohne zusätzlichen Push-Dienst nicht garantiert.');
+    const background=await registerBackgroundAppointmentCheck();
+    alert(background.ok
+      ? 'Benachrichtigungen sind erlaubt. Eine Hintergrundprüfung wurde angefordert. Chrome entscheidet selbst, wann sie läuft; feste Uhrzeiten oder eine tägliche Ausführung sind nicht garantiert.'
+      : 'Benachrichtigungen sind erlaubt. Dein Browser unterstützt die regelmäßige Hintergrundprüfung nicht oder hat sie abgelehnt. Termine werden weiterhin geprüft, wenn die App geöffnet ist.');
     checkAppointmentNotifications();
     syncNotificationButton();
   }catch(e){console.error(e);alert('Die Benachrichtigungseinstellung konnte nicht geändert werden.');}
@@ -1744,7 +1757,7 @@ window.addEventListener('appinstalled',()=>{
   deferredInstallPrompt=null;
 });
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-  navigator.serviceWorker.register('./sw.js?v=33', {updateViaCache:'none'}).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=39', {updateViaCache:'none'}).catch(()=>{});
 }
 // Android-Zurücktaste innerhalb der PWA abfangen: erst innerhalb der App zurückgehen,
 // auf der Startansicht bleiben statt die App durch den Zurück-Verlauf zu verlassen.
@@ -1769,7 +1782,7 @@ window.addEventListener('popstate',()=>{
   keepAppOpenOnBack();
 });
 document.getElementById('search').addEventListener('input',render);
-load().then(async()=>{if(syncAutomaticServiceAppointments())await save();syncNotificationButton();render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');});checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');document.body.classList.remove('booting');});
+load().then(async()=>{if(syncAutomaticServiceAppointments())await save();if(('Notification' in window)&&Notification.permission==='granted')registerBackgroundAppointmentCheck();syncNotificationButton();render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');});checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');document.body.classList.remove('booting');});
 </script>
 </body>
 </html>

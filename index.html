@@ -429,6 +429,45 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 :root[data-theme="dark"] [aria-disabled="true"] { opacity: .78; }
 </style>
 
+
+<style>
+/* v32: eindeutiger Darkmode-Kontrast für dynamische Formulare (Termine/Reifen/Tanken) */
+:root[data-theme="dark"] .entry-form-overlay .entry-form-panel {
+  background:#1c2732 !important; color:#f3f6f9 !important; border:1px solid #465767;
+}
+:root[data-theme="dark"] .entry-form-overlay .entry-form-panel h2,
+:root[data-theme="dark"] .entry-form-overlay .entry-form-panel label,
+:root[data-theme="dark"] .entry-form-overlay .entry-form-panel .entry-form-check span {
+  color:#f3f6f9 !important;
+}
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field input,
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field select,
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field textarea,
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field input[type="date"],
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field input[type="number"] {
+  background-color:#111a22 !important; color:#f3f6f9 !important; -webkit-text-fill-color:#f3f6f9;
+  border:1px solid #718395 !important; caret-color:#ffffff; color-scheme:dark;
+}
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field input::placeholder,
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field textarea::placeholder {
+  color:#b8c5d1 !important; opacity:1 !important; -webkit-text-fill-color:#b8c5d1;
+}
+:root[data-theme="dark"] .entry-form-overlay .entry-form-field select option {
+  background:#111a22 !important; color:#f3f6f9 !important;
+}
+:root[data-theme="dark"] .entry-form-overlay .entry-form-actions button.secondary {
+  background:#354656 !important; color:#ffffff !important; border:1px solid #64798b;
+}
+:root[data-theme="dark"] .entry-form-overlay .entry-form-actions button:not(.secondary) {
+  background:#356da0 !important; color:#ffffff !important;
+}
+:root[data-theme="dark"] .entry-form-overlay input:focus,
+:root[data-theme="dark"] .entry-form-overlay select:focus,
+:root[data-theme="dark"] .entry-form-overlay textarea:focus {
+  outline:2px solid #8bc5ff !important; outline-offset:1px; border-color:#8bc5ff !important;
+}
+</style>
+
 </head>
 <body class="booting">
 <header>

@@ -898,8 +898,26 @@ function switchTabById(id){
   const btn=[...document.querySelectorAll('.nav-tabs button')].find(b=>b.getAttribute('onclick')?.includes("'"+id+"'"));
   if(btn)switchTab(btn,id);
 }
+function calculatedMonthlyKm(v){
+  const entries=(v.kmHistory||[]).filter(x=>x&&x.date&&Number.isFinite(Number(x.km))&&Number(x.km)>=0)
+    .map(x=>({date:String(x.date).slice(0,10),km:Number(x.km)}))
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  const byDate=[];
+  for(const e of entries){if(byDate.length&&byDate[byDate.length-1].date===e.date){byDate[byDate.length-1]=e;}else byDate.push(e);}
+  if(byDate.length<2)return null;
+  let totalKm=0, totalDays=0;
+  for(let i=1;i<byDate.length;i++){
+    const a=byDate[i-1],b=byDate[i];
+    const days=(new Date(b.date+'T12:00:00')-new Date(a.date+'T12:00:00'))/86400000;
+    const diff=b.km-a.km;
+    if(days>0&&diff>=0){totalKm+=diff;totalDays+=days;}
+  }
+  return totalDays>0&&totalKm>0?Math.round(totalKm/totalDays*30.4375):null;
+}
 function estimatedCurrentKm(v){
-  const base=Number(v.km||0), monthly=Math.max(0,Number(v.monthlyKm||0));
+  const base=Number(v.km||0), calculated=calculatedMonthlyKm(v);
+  const monthly=Math.max(0,Number(calculated!==null?calculated:(v.monthlyKm||0)));
+  if(calculated!==null)v.monthlyKm=String(calculated);
   if(!monthly)return base;
   const start=v.kmReferenceDate||localDateKey();
   const days=Math.max(0,(new Date(localDateKey()+'T12:00:00')-new Date(start+'T12:00:00'))/86400000);
@@ -982,7 +1000,7 @@ function renderDetail(){
       ${repairs.length?repairs.map((r,i)=>({r,i})).sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||''))).slice(0,3).map(({r,i})=>`
         <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
         <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
-        <div>${esc(r.note||'')}</div>${r.type==='Ölwechsel'?`<div class="muted">Öl: ${esc(r.oilAmount||'–')} l · ${esc(r.oilType||'Ölsorte n. a.')} · Ölfilter ${esc(r.oilFilter||'n. a.')}</div>`:''}${r.type==='Filterwechsel'?`<div class="muted">Filter: ${esc((r.filters||[]).join(', ')||'–')}${r.filterParts?' · '+esc(r.filterParts):''}</div>`:''}${Number(r.repeatKm)>0||Number(r.repeatMonths)>0?`<div class="muted">Wiederholung: ${Number(r.repeatKm)>0?Number(r.repeatKm).toLocaleString('de-DE')+' km':''}${Number(r.repeatKm)>0&&Number(r.repeatMonths)>0?' oder ':''}${Number(r.repeatMonths)>0?r.repeatMonths+' Monate':''}</div>`:''}${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
+        <div>${esc(r.note||'')}</div>${r.type==='Ölwechsel'?`<div class="muted">Öl: ${esc(r.oilAmount||'–')} l · ${esc(r.oilType||'Ölsorte n. a.')} · Ölfilter ${r.oilFilterChanged?'mitgewechselt':'nicht angegeben'}${r.oilFilter?' · '+esc(r.oilFilter):''}</div>`:''}${r.type==='Filterwechsel'?`<div class="muted">Filter: ${esc((r.filters||[]).join(', ')||'–')}${r.filterParts?' · '+esc(r.filterParts):''}</div>`:''}${Number(r.repeatKm)>0||Number(r.repeatMonths)>0?`<div class="muted">Wiederholung: ${Number(r.repeatKm)>0?Number(r.repeatKm).toLocaleString('de-DE')+' km':''}${Number(r.repeatKm)>0&&Number(r.repeatMonths)>0?' oder ':''}${Number(r.repeatMonths)>0?r.repeatMonths+' Monate':''}</div>`:''}${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
         <div class="item-actions"><button class="secondary" onclick="editRepair(${i})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteRepair(${i})">Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Einträge.</div>'}
     </div>
   </div>
@@ -993,7 +1011,7 @@ function renderDetail(){
       ${repairs.length?repairs.map((r,i)=>({r,i})).sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||''))).map(({r,i})=>`
       <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
       <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
-      <div>${esc(r.note||'')}</div>${r.type==='Ölwechsel'?`<div class="muted">Öl: ${esc(r.oilAmount||'–')} l · ${esc(r.oilType||'Ölsorte n. a.')} · Ölfilter ${esc(r.oilFilter||'n. a.')}</div>`:''}${r.type==='Filterwechsel'?`<div class="muted">Filter: ${esc((r.filters||[]).join(', ')||'–')}${r.filterParts?' · '+esc(r.filterParts):''}</div>`:''}${Number(r.repeatKm)>0||Number(r.repeatMonths)>0?`<div class="muted">Wiederholung: ${Number(r.repeatKm)>0?Number(r.repeatKm).toLocaleString('de-DE')+' km':''}${Number(r.repeatKm)>0&&Number(r.repeatMonths)>0?' oder ':''}${Number(r.repeatMonths)>0?r.repeatMonths+' Monate':''}</div>`:''}${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
+      <div>${esc(r.note||'')}</div>${r.type==='Ölwechsel'?`<div class="muted">Öl: ${esc(r.oilAmount||'–')} l · ${esc(r.oilType||'Ölsorte n. a.')} · Ölfilter ${r.oilFilterChanged?'mitgewechselt':'nicht angegeben'}${r.oilFilter?' · '+esc(r.oilFilter):''}</div>`:''}${r.type==='Filterwechsel'?`<div class="muted">Filter: ${esc((r.filters||[]).join(', ')||'–')}${r.filterParts?' · '+esc(r.filterParts):''}</div>`:''}${Number(r.repeatKm)>0||Number(r.repeatMonths)>0?`<div class="muted">Wiederholung: ${Number(r.repeatKm)>0?Number(r.repeatKm).toLocaleString('de-DE')+' km':''}${Number(r.repeatKm)>0&&Number(r.repeatMonths)>0?' oder ':''}${Number(r.repeatMonths)>0?r.repeatMonths+' Monate':''}</div>`:''}${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
       <div class="item-actions"><button class="secondary" onclick="editRepair(${i})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteRepair(${i})">🗑 Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Einträge.</div>'}
       <button style="width:100%;margin-top:8px" onclick="addRepair()">＋ Service / Reparatur</button>
     </div>
@@ -1264,8 +1282,8 @@ function formVehicle(title){
   <label>KBA-Nummer (HSN / TSN)</label><input id="f_kba" value="${esc(v.kba||'')}" placeholder="z.B. 0603 / BQF">
   <label>FIN / VIN</label><input id="f_vin" value="${esc(v.vin)}">
   <label>Aktueller Kilometerstand</label><input id="f_km" value="${esc(v.km)}" inputmode="numeric">
-  <label>Durchschnittlich gefahrene Kilometer pro Monat</label><input id="f_monthlyKm" value="${esc(v.monthlyKm||'')}" inputmode="numeric" placeholder="z. B. 1200">
-  <div class="muted">Dient zur Schätzung des Kilometerstands für die Service-Erinnerung.</div>
+  <label>Durchschnittliche Monatsfahrleistung (km)</label><input id="f_monthlyKm" value="${esc(calculatedMonthlyKm(v)??v.monthlyKm??'')}" inputmode="numeric" placeholder="Wird aus Kilometerständen berechnet" ${calculatedMonthlyKm(v)!==null?'readonly':''}>
+  <div class="muted">${calculatedMonthlyKm(v)!==null?'Automatisch aus datierten Kilometerständen berechnet.':'Sobald mindestens zwei gültige Kilometerstände mit Datum vorliegen, wird dieser Wert automatisch berechnet. Bis dahin kann er manuell angegeben werden.'}</div>
   <label>TÜV bis</label><input id="f_tuv" type="date" value="${esc(v.tuv)}">
   <button onclick="saveVehicle()">Speichern</button> <button class="secondary" onclick="${db.vehicles.some(x=>x.id===v.id)?`openVehicle('${esc(v.id)}')`:'showHome()'}">Abbrechen</button>
   </div>`;
@@ -1284,7 +1302,8 @@ async function saveVehicle(){
   v.vin=document.getElementById('f_vin').value.trim();
   const previousKm=Number(v.km||0);
   v.km=document.getElementById('f_km').value.trim();
-  v.monthlyKm=document.getElementById('f_monthlyKm').value.trim();
+  const calculatedKm=calculatedMonthlyKm(v);
+  v.monthlyKm=String(calculatedKm!==null?calculatedKm:document.getElementById('f_monthlyKm').value.trim());
   if(!v.kmReferenceDate || Number(v.km)!==previousKm) v.kmReferenceDate=localDateKey();
   v.tuv=document.getElementById('f_tuv').value;
   const existing=db.vehicles.find(x=>x.id===v.id);
@@ -1300,8 +1319,8 @@ function addRepair(){
   <label>Datum</label><input id="r_date" type="date" value="${localDateKey()}">
   <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(v.km)}">
   <label>Art</label><select id="r_type" onchange="toggleServiceFields()"><option>Service</option><option>Ölwechsel</option><option>Filterwechsel</option><option>Inspektion</option><option>Reparatur</option><option>Reifen</option><option>TÜV</option><option>Unfall</option><option>Sonstiges</option></select>
-  <div id="oilFields" class="hidden"><label>Ölmenge (Liter)</label><input id="r_oilAmount" inputmode="decimal" placeholder="z. B. 4,5"><label>Ölsorte / Viskosität / Freigabe</label><input id="r_oilType" placeholder="z. B. 5W-30"><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" placeholder="Hersteller und Teilenummer"></div>
-  <div id="filterFields" class="hidden"><label>Filter auswählen (Mehrfachauswahl möglich)</label><label class="entry-form-check"><input type="checkbox" id="r_filterAir"> Luftfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterCabin"> Innenraumfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterFuel"> Kraftstofffilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterOil"> Ölfilter</label><label>Filter-Teilenummern / Hersteller (optional)</label><input id="r_filterParts" placeholder="z. B. Luftfilter: …"></div>
+  <div id="oilFields" class="hidden"><label>Ölmenge (Liter)</label><input id="r_oilAmount" inputmode="decimal" placeholder="z. B. 4,5"><label>Ölsorte / Viskosität / Freigabe</label><input id="r_oilType" placeholder="z. B. 5W-30"><label class="entry-form-check"><input type="checkbox" id="r_filterOil"> Ölfilter beim Ölwechsel mitwechseln</label><label>Ölfilter – Art / Teilenummer (optional)</label><input id="r_oilFilter" placeholder="Hersteller und Teilenummer"></div>
+  <div id="filterFields" class="hidden"><label>Filter auswählen (Mehrfachauswahl möglich)</label><label class="entry-form-check"><input type="checkbox" id="r_filterAir"> Luftfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterCabin"> Innenraumfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterFuel"> Kraftstofffilter</label><label>Filter-Teilenummern / Hersteller (optional)</label><input id="r_filterParts" placeholder="z. B. Luftfilter: …"></div>
   <label>Wiederholung nach Kilometern (optional)</label><input id="r_repeatKm" inputmode="numeric" placeholder="z. B. 15000">
   <label>Wiederholung nach Monaten (optional)</label><select id="r_repeatMonths"><option value="0">Kein Zeitintervall</option><option value="3">3 Monate</option><option value="6">6 Monate</option><option value="12">12 Monate</option><option value="18">18 Monate</option><option value="24">24 Monate</option><option value="36">36 Monate</option></select>
   <div class="muted">Bei einem Kilometerintervall wird 1.000 km vor dem errechneten nächsten Service ein Hinweis angezeigt. Die Schätzung nutzt die monatliche Fahrleistung aus den Fahrzeugdaten.</div>
@@ -1320,7 +1339,7 @@ async function saveRepair(){
   const v=current;
   v.repairs=v.repairs||[];
   const type=document.getElementById('r_type').value;
-  const entry={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,repeatKm:document.getElementById('r_repeatKm').value,repeatMonths:document.getElementById('r_repeatMonths').value,oilAmount:type==='Ölwechsel'?document.getElementById('r_oilAmount').value:'',oilType:type==='Ölwechsel'?document.getElementById('r_oilType').value:'',oilFilter:type==='Ölwechsel'?document.getElementById('r_oilFilter').value:'',filters:type==='Filterwechsel'?['Luftfilter','Innenraumfilter','Kraftstofffilter','Ölfilter'].filter((x,i)=>document.getElementById(['r_filterAir','r_filterCabin','r_filterFuel','r_filterOil'][i])?.checked):[],filterParts:type==='Filterwechsel'?document.getElementById('r_filterParts').value:''};
+  const entry={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,repeatKm:document.getElementById('r_repeatKm').value,repeatMonths:document.getElementById('r_repeatMonths').value,oilAmount:type==='Ölwechsel'?document.getElementById('r_oilAmount').value:'',oilType:type==='Ölwechsel'?document.getElementById('r_oilType').value:'',oilFilter:type==='Ölwechsel'?document.getElementById('r_oilFilter').value:'',oilFilterChanged:type==='Ölwechsel'&&!!document.getElementById('r_filterOil')?.checked,filters:type==='Filterwechsel'?['Luftfilter','Innenraumfilter','Kraftstofffilter'].filter((x,i)=>document.getElementById(['r_filterAir','r_filterCabin','r_filterFuel'][i])?.checked):[],filterParts:type==='Filterwechsel'?document.getElementById('r_filterParts').value:''};
   v.repairs.push(entry);
   const oldKm=num(v.km);v.km=document.getElementById('r_km').value;if(num(v.km)!==oldKm)v.kmReferenceDate=entry.date||localDateKey();
   if(num(v.km)>0&&num(v.km)!==oldKm){v.kmHistory=v.kmHistory||[];v.kmHistory.push({date:entry.date,km:String(v.km),note:'Bei Service/Reparatur erfasst'});}
@@ -1333,7 +1352,7 @@ function editRepair(index){
   document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">Service / Reparatur bearbeiten</div>
   <label>Datum</label><input id="r_date" type="date" value="${esc(r.date||'')}">
   <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(r.km??v.km??'')}">
-  <label>Art</label><select id="r_type">${['Service','Ölwechsel','Filterwechsel','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select><label>Ölmenge (Liter)</label><input id="r_oilAmount" value="${esc(r.oilAmount||'')}"><label>Ölsorte / Viskosität</label><input id="r_oilType" value="${esc(r.oilType||'')}"><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" value="${esc(r.oilFilter||'')}"><label>Filterarten (Komma getrennt)</label><input id="r_filters" value="${esc((r.filters||[]).join(', '))}"><label>Filter-Teilenummern / Hersteller</label><input id="r_filterParts" value="${esc(r.filterParts||'')}"><label>Wiederholung nach Kilometern</label><input id="r_repeatKm" value="${esc(r.repeatKm||'')}" inputmode="numeric"><label>Wiederholung nach Monaten</label><select id="r_repeatMonths">${[0,3,6,12,18,24,36].map(n=>`<option value="${n}" ${Number(r.repeatMonths||0)===n?'selected':''}>${n===0?'Kein Zeitintervall':n+' Monate'}</option>`).join('')}</select>
+  <label>Art</label><select id="r_type">${['Service','Ölwechsel','Filterwechsel','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select><label>Ölmenge (Liter)</label><input id="r_oilAmount" value="${esc(r.oilAmount||'')}"><label>Ölsorte / Viskosität</label><input id="r_oilType" value="${esc(r.oilType||'')}"><label class="entry-form-check"><input type="checkbox" id="r_oilFilterChanged" ${r.oilFilterChanged?'checked':''}> Ölfilter beim Ölwechsel mitwechseln</label><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" value="${esc(r.oilFilter||'')}"><label>Filterarten (Komma getrennt, ohne Ölfilter)</label><input id="r_filters" value="${esc((r.filters||[]).join(', '))}"><label>Filter-Teilenummern / Hersteller</label><input id="r_filterParts" value="${esc(r.filterParts||'')}"><label>Wiederholung nach Kilometern</label><input id="r_repeatKm" value="${esc(r.repeatKm||'')}" inputmode="numeric"><label>Wiederholung nach Monaten</label><select id="r_repeatMonths">${[0,3,6,12,18,24,36].map(n=>`<option value="${n}" ${Number(r.repeatMonths||0)===n?'selected':''}>${n===0?'Kein Zeitintervall':n+' Monate'}</option>`).join('')}</select>
   <label>Was wurde gemacht?</label><textarea id="r_note" rows="4">${esc(r.note||'')}</textarea>
   <label>Werkstatt</label><input id="r_workshop" value="${esc(r.workshop||'')}">
   <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal" value="${esc(r.cost??'')}">
@@ -1344,7 +1363,7 @@ async function updateRepair(index){
   if(!v?.repairs?.[index])return;
   const before=v.repairs[index];
   const type=document.getElementById('r_type').value;
-  v.repairs[index]={...before,date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,oilAmount:document.getElementById('r_oilAmount')?.value||'',oilType:document.getElementById('r_oilType')?.value||'',oilFilter:document.getElementById('r_oilFilter')?.value||'',filters:(document.getElementById('r_filters')?.value||'').split(',').map(x=>x.trim()).filter(Boolean),filterParts:document.getElementById('r_filterParts')?.value||'',repeatKm:document.getElementById('r_repeatKm')?.value||'',repeatMonths:document.getElementById('r_repeatMonths')?.value||'0'};
+  v.repairs[index]={...before,date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,oilAmount:document.getElementById('r_oilAmount')?.value||'',oilType:document.getElementById('r_oilType')?.value||'',oilFilter:document.getElementById('r_oilFilter')?.value||'',oilFilterChanged:!!document.getElementById('r_oilFilterChanged')?.checked,filters:(document.getElementById('r_filters')?.value||'').split(',').map(x=>x.trim()).filter(x=>x&&x!=='Ölfilter'),filterParts:document.getElementById('r_filterParts')?.value||'',repeatKm:document.getElementById('r_repeatKm')?.value||'',repeatMonths:document.getElementById('r_repeatMonths')?.value||'0'};
   v.km=document.getElementById('r_km').value;v.kmReferenceDate=localDateKey();logHistory('Service/Reparatur bearbeitet',`${before.type||'Eintrag'} · ${v.repairs[index].date}`);
   if(await save())renderDetail();
 }

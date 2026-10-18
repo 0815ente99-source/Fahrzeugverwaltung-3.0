@@ -332,6 +332,103 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 :root[data-theme="dark"] #appointmentList .calendar-event { border-color:#667482 !important; }
 </style>
 
+
+<style id="darkmode-form-contrast-v31">
+/* v31: hohe Lesbarkeit aller Formulare im Darkmode, einschließlich dynamischer Dialoge */
+:root[data-theme="dark"] {
+  --text: #f4f7fa;
+  --muted: #c0ccd7;
+  --line: #526171;
+  --card: #202c38;
+  --bg: #111820;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] label,
+:root[data-theme="dark"] .section-title,
+:root[data-theme="dark"] .panel label,
+:root[data-theme="dark"] .card label,
+:root[data-theme="dark"] .muted,
+:root[data-theme="dark"] .kpi,
+:root[data-theme="dark"] .status-line,
+:root[data-theme="dark"] .item,
+:root[data-theme="dark"] .doc,
+:root[data-theme="dark"] .history-entry {
+  color: #d7e0e8;
+}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] .search,
+:root[data-theme="dark"] input[type="date"],
+:root[data-theme="dark"] input[type="time"],
+:root[data-theme="dark"] input[type="datetime-local"],
+:root[data-theme="dark"] input[type="number"],
+:root[data-theme="dark"] input[type="file"] {
+  background-color: #111b25 !important;
+  color: #f5f8fb !important;
+  border: 1px solid #718397 !important;
+  caret-color: #ffffff;
+  -webkit-text-fill-color: #f5f8fb;
+  color-scheme: dark;
+}
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder,
+:root[data-theme="dark"] .search::placeholder {
+  color: #bdc9d5 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #bdc9d5;
+}
+:root[data-theme="dark"] select option,
+:root[data-theme="dark"] optgroup {
+  background: #111b25 !important;
+  color: #f5f8fb !important;
+}
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] select:focus,
+:root[data-theme="dark"] textarea:focus,
+:root[data-theme="dark"] .search:focus {
+  outline: 2px solid #8ecbff !important;
+  outline-offset: 1px;
+  border-color: #8ecbff !important;
+}
+:root[data-theme="dark"] button.secondary,
+:root[data-theme="dark"] button.back,
+:root[data-theme="dark"] .form-actions button.secondary,
+:root[data-theme="dark"] .item-actions button.secondary {
+  background: #354656 !important;
+  color: #ffffff !important;
+  border: 1px solid #63788b !important;
+}
+:root[data-theme="dark"] button.dangerBtn {
+  background: #572d32 !important;
+  color: #ffe9eb !important;
+  border: 1px solid #b86b75 !important;
+}
+:root[data-theme="dark"] .mini-card,
+:root[data-theme="dark"] .table-row,
+:root[data-theme="dark"] .quick-action-overlay .panel {
+  background: #202c38;
+  color: #f4f7fa;
+  border-color: #526171;
+}
+:root[data-theme="dark"] .nav-tabs button { color: #d5e0e9; }
+:root[data-theme="dark"] .nav-tabs button.active { background: #405568; color: #ffffff; }
+:root[data-theme="dark"] .calendar-event,
+:root[data-theme="dark"] #appointmentList .calendar-event {
+  background: #202c38 !important;
+  color: #f4f7fa !important;
+  border-color: #526171 !important;
+}
+:root[data-theme="dark"] .calendar-event-date,
+:root[data-theme="dark"] #appointmentList .calendar-event-date { color: #d2dce5 !important; }
+:root[data-theme="dark"] .calendar-event-title,
+:root[data-theme="dark"] .calendar-event-vehicle,
+:root[data-theme="dark"] #appointmentList .calendar-event-title,
+:root[data-theme="dark"] #appointmentList .calendar-event-vehicle { color: #f4f7fa !important; }
+:root[data-theme="dark"] :disabled,
+:root[data-theme="dark"] [aria-disabled="true"] { opacity: .78; }
+</style>
+
 </head>
 <body class="booting">
 <header>

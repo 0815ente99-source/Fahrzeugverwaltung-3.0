@@ -938,6 +938,31 @@ function serviceDueBanner(v){
   if(!rows.length)return '';
   return `<div class="panel" style="border-color:#e6a23c;background:var(--card)"><b>⚠️ Nächster Service im Blick</b>${rows.map(({r,info})=>`<div class="item"><b>${esc(r.type||'Service')}${r.note?' – '+esc(r.note):''}</b><div class="muted">${info.dueKm!==null?`Ziel: ${info.dueKm.toLocaleString('de-DE')} km · ${info.kmLeft<=0?'Kilometerintervall erreicht':info.kmLeft.toLocaleString('de-DE')+' km verbleibend'}${info.kmAlert?' · ⚠️ 1.000-km-Hinweis':''}`:''}${info.dueDate?`${info.dueKm!==null?' · ':''}Fällig am ${formatDateDE(info.dueDate)}${info.daysLeft<=30?' · Zeitraum nähert sich':''}`:''}</div></div>`).join('')}</div>`;
 }
+function shiftDateKey(dateKey,days){const d=new Date(dateKey+'T12:00:00');d.setDate(d.getDate()+days);return localDateKey(d);}
+function syncAutomaticServiceAppointments(){
+  let changed=false;
+  for(const v of (db.vehicles||[])){
+    v.repairs=v.repairs||[];v.reminders=v.reminders||[];
+    for(const r of v.repairs){
+      if(!(Number(r.repeatKm)>0||Number(r.repeatMonths)>0)||!r.date)continue;
+      if(!r.serviceReminderId){r.serviceReminderId=(crypto.randomUUID?crypto.randomUUID():'svc-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));changed=true;}
+      const info=serviceDueInfo(v,r);let reminderDate=null,reason='';
+      // Kilometer-Erinnerung wird als Termin angelegt, sobald höchstens 1.000 km verbleiben.
+      if(info.kmLeft!==null&&info.kmLeft<=1000){reminderDate=localDateKey();reason='Kilometerintervall: 1.000-km-Servicehinweis';}
+      // Zeitintervall: Termin exakt 14 Tage vor dem errechneten Fälligkeitsdatum.
+      if(info.dueDate){const dateReminder=shiftDateKey(info.dueDate,-14);if(dateReminder<=localDateKey()&&(!reminderDate||localDateKey()<reminderDate)){reminderDate=localDateKey();reason='Zeitintervall: Service in 14 Tagen fällig';}}
+      const existing=v.reminders.find(x=>x.autoServiceReminder===true&&x.sourceServiceId===r.serviceReminderId);
+      if(reminderDate){
+        const title='Service-Erinnerung: '+(r.type||'Service');
+        const note=[r.note,reason].filter(Boolean).join(' · ');
+        if(!existing){v.reminders.push({title,date:reminderDate,note,leadDays:0,done:false,autoServiceReminder:true,sourceServiceId:r.serviceReminderId});changed=true;}
+        else if(!existing.done&&(existing.date!==reminderDate||existing.title!==title||existing.note!==note)){existing.date=reminderDate;existing.title=title;existing.note=note;changed=true;}
+      }
+    }
+  }
+  return changed;
+}
+
 function renderDetail(){
   if(!current)return;
   document.getElementById('home').classList.add('hidden');
@@ -1319,7 +1344,7 @@ function addRepair(){
   <label>Datum</label><input id="r_date" type="date" value="${localDateKey()}">
   <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(v.km)}">
   <label>Art</label><select id="r_type" onchange="toggleServiceFields()"><option>Service</option><option>Ölwechsel</option><option>Filterwechsel</option><option>Inspektion</option><option>Reparatur</option><option>Reifen</option><option>TÜV</option><option>Unfall</option><option>Sonstiges</option></select>
-  <div id="oilFields" class="hidden"><label>Ölmenge (Liter)</label><input id="r_oilAmount" inputmode="decimal" placeholder="z. B. 4,5"><label>Ölsorte / Viskosität / Freigabe</label><input id="r_oilType" placeholder="z. B. 5W-30"><label class="entry-form-check"><input type="checkbox" id="r_filterOil"> Ölfilter beim Ölwechsel mitwechseln</label><label>Ölfilter – Art / Teilenummer (optional)</label><input id="r_oilFilter" placeholder="Hersteller und Teilenummer"></div>
+  <div id="oilFields" class="hidden"><label>Ölmenge (Liter)</label><input id="r_oilAmount" inputmode="decimal" placeholder="z. B. 4,5"><label>Ölsorte / Viskosität / Freigabe</label><input id="r_oilType" placeholder="z. B. 5W-30"><label class="entry-form-check"><input type="checkbox" id="r_filterOil"> Ölfilter erneuert</label><label>Ölfilter – Art / Teilenummer (optional)</label><input id="r_oilFilter" placeholder="Hersteller und Teilenummer"></div>
   <div id="filterFields" class="hidden"><label>Filter auswählen (Mehrfachauswahl möglich)</label><label class="entry-form-check"><input type="checkbox" id="r_filterAir"> Luftfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterCabin"> Innenraumfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterFuel"> Kraftstofffilter</label><label>Filter-Teilenummern / Hersteller (optional)</label><input id="r_filterParts" placeholder="z. B. Luftfilter: …"></div>
   <label>Wiederholung nach Kilometern (optional)</label><input id="r_repeatKm" inputmode="numeric" placeholder="z. B. 15000">
   <label>Wiederholung nach Monaten (optional)</label><select id="r_repeatMonths"><option value="0">Kein Zeitintervall</option><option value="3">3 Monate</option><option value="6">6 Monate</option><option value="12">12 Monate</option><option value="18">18 Monate</option><option value="24">24 Monate</option><option value="36">36 Monate</option></select>
@@ -1344,6 +1369,7 @@ async function saveRepair(){
   const oldKm=num(v.km);v.km=document.getElementById('r_km').value;if(num(v.km)!==oldKm)v.kmReferenceDate=entry.date||localDateKey();
   if(num(v.km)>0&&num(v.km)!==oldKm){v.kmHistory=v.kmHistory||[];v.kmHistory.push({date:entry.date,km:String(v.km),note:'Bei Service/Reparatur erfasst'});}
   logHistory('Service/Reparatur hinzugefügt',`${entry.type} · ${entry.date} · ${euro(entry.cost)}`);
+  syncAutomaticServiceAppointments();
   if(await save())renderDetail();
 }
 function editRepair(index){
@@ -1352,7 +1378,7 @@ function editRepair(index){
   document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">Service / Reparatur bearbeiten</div>
   <label>Datum</label><input id="r_date" type="date" value="${esc(r.date||'')}">
   <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(r.km??v.km??'')}">
-  <label>Art</label><select id="r_type">${['Service','Ölwechsel','Filterwechsel','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select><label>Ölmenge (Liter)</label><input id="r_oilAmount" value="${esc(r.oilAmount||'')}"><label>Ölsorte / Viskosität</label><input id="r_oilType" value="${esc(r.oilType||'')}"><label class="entry-form-check"><input type="checkbox" id="r_oilFilterChanged" ${r.oilFilterChanged?'checked':''}> Ölfilter beim Ölwechsel mitwechseln</label><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" value="${esc(r.oilFilter||'')}"><label>Filterarten (Komma getrennt, ohne Ölfilter)</label><input id="r_filters" value="${esc((r.filters||[]).join(', '))}"><label>Filter-Teilenummern / Hersteller</label><input id="r_filterParts" value="${esc(r.filterParts||'')}"><label>Wiederholung nach Kilometern</label><input id="r_repeatKm" value="${esc(r.repeatKm||'')}" inputmode="numeric"><label>Wiederholung nach Monaten</label><select id="r_repeatMonths">${[0,3,6,12,18,24,36].map(n=>`<option value="${n}" ${Number(r.repeatMonths||0)===n?'selected':''}>${n===0?'Kein Zeitintervall':n+' Monate'}</option>`).join('')}</select>
+  <label>Art</label><select id="r_type">${['Service','Ölwechsel','Filterwechsel','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select><label>Ölmenge (Liter)</label><input id="r_oilAmount" value="${esc(r.oilAmount||'')}"><label>Ölsorte / Viskosität</label><input id="r_oilType" value="${esc(r.oilType||'')}"><label class="entry-form-check"><input type="checkbox" id="r_oilFilterChanged" ${r.oilFilterChanged?'checked':''}> Ölfilter erneuert</label><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" value="${esc(r.oilFilter||'')}"><label>Filterarten (Komma getrennt, ohne Ölfilter)</label><input id="r_filters" value="${esc((r.filters||[]).join(', '))}"><label>Filter-Teilenummern / Hersteller</label><input id="r_filterParts" value="${esc(r.filterParts||'')}"><label>Wiederholung nach Kilometern</label><input id="r_repeatKm" value="${esc(r.repeatKm||'')}" inputmode="numeric"><label>Wiederholung nach Monaten</label><select id="r_repeatMonths">${[0,3,6,12,18,24,36].map(n=>`<option value="${n}" ${Number(r.repeatMonths||0)===n?'selected':''}>${n===0?'Kein Zeitintervall':n+' Monate'}</option>`).join('')}</select>
   <label>Was wurde gemacht?</label><textarea id="r_note" rows="4">${esc(r.note||'')}</textarea>
   <label>Werkstatt</label><input id="r_workshop" value="${esc(r.workshop||'')}">
   <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal" value="${esc(r.cost??'')}">
@@ -1365,6 +1391,7 @@ async function updateRepair(index){
   const type=document.getElementById('r_type').value;
   v.repairs[index]={...before,date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,oilAmount:document.getElementById('r_oilAmount')?.value||'',oilType:document.getElementById('r_oilType')?.value||'',oilFilter:document.getElementById('r_oilFilter')?.value||'',oilFilterChanged:!!document.getElementById('r_oilFilterChanged')?.checked,filters:(document.getElementById('r_filters')?.value||'').split(',').map(x=>x.trim()).filter(x=>x&&x!=='Ölfilter'),filterParts:document.getElementById('r_filterParts')?.value||'',repeatKm:document.getElementById('r_repeatKm')?.value||'',repeatMonths:document.getElementById('r_repeatMonths')?.value||'0'};
   v.km=document.getElementById('r_km').value;v.kmReferenceDate=localDateKey();logHistory('Service/Reparatur bearbeitet',`${before.type||'Eintrag'} · ${v.repairs[index].date}`);
+  syncAutomaticServiceAppointments();
   if(await save())renderDetail();
 }
 async function deleteRepair(index){
@@ -1742,7 +1769,7 @@ window.addEventListener('popstate',()=>{
   keepAppOpenOnBack();
 });
 document.getElementById('search').addEventListener('input',render);
-load().then(()=>{syncNotificationButton();render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');});checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');document.body.classList.remove('booting');});
+load().then(async()=>{if(syncAutomaticServiceAppointments())await save();syncNotificationButton();render();if(!appIsLocked){document.getElementById('appLock').classList.add('hidden');document.getElementById('logoutButton')?.classList.remove('hidden');}else{document.getElementById('appLock').classList.remove('hidden');}requestAnimationFrame(()=>{document.body.classList.remove('booting');if(!appIsLocked)animatePage('home');});checkAppointmentNotifications();setInterval(checkAppointmentNotifications,60000);}).catch(()=>{document.getElementById('appLock').classList.remove('hidden');document.body.classList.remove('booting');});
 </script>
 </body>
 </html>

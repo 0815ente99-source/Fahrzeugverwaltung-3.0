@@ -486,6 +486,31 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .search-suggestions-empty{padding:12px;font-size:14px;color:var(--muted)}
 </style>
 
+
+<style id="vehicle-card-theme-borders-v34">
+/* Fahrzeugkarten: dunkelblauer Rand im Hellmodus, neon-dunkelblauer Rand im Darkmode */
+#vehicleList > .card {
+  border: 2px solid #173d78 !important;
+  box-shadow: 0 2px 8px rgba(23,61,120,.10);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+#vehicleList > .card:focus-visible {
+  outline: 2px solid #4f86df;
+  outline-offset: 2px;
+}
+:root[data-theme="dark"] #vehicleList > .card {
+  border: 2px solid #1747a8 !important;
+  box-shadow: 0 0 0 1px rgba(23,71,168,.28), 0 0 10px rgba(27,91,220,.22);
+}
+@media (hover:hover) {
+  #vehicleList > .card:hover { border-color: #2457a4 !important; }
+  :root[data-theme="dark"] #vehicleList > .card:hover {
+    border-color: #2672ff !important;
+    box-shadow: 0 0 0 1px rgba(38,114,255,.35), 0 0 14px rgba(38,114,255,.32);
+  }
+}
+</style>
+
 </head>
 <body class="booting">
 <header>

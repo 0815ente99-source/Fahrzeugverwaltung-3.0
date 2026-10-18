@@ -564,6 +564,8 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
       <button onclick="hideVehicleActions();addRepair()">🔧 Service</button>
       <button class="secondary" onclick="hideVehicleActions();addReminder()">🔔 Erinnerung</button>
       <button class="secondary" onclick="hideVehicleActions();addKmEntry()">📈 Kilometer</button>
+      <button class="secondary" onclick="hideVehicleActions();switchTabById('fuelTab')">⛽ Tank</button>
+      <button class="secondary" onclick="hideVehicleActions();switchTabById('tiresTab')">🛞 Reifen</button>
       <button class="secondary" onclick="hideVehicleActions();document.getElementById('galleryInput').click()">📷 Foto hinzufügen</button>
     </div>
   </div>
@@ -891,6 +893,33 @@ function openVehicle(id){
   if(!current){showHome();return;}
   renderDetail();
 }
+function switchTabById(id){
+  if(!current)return;renderDetail();
+  const btn=[...document.querySelectorAll('.nav-tabs button')].find(b=>b.getAttribute('onclick')?.includes("'"+id+"'"));
+  if(btn)switchTab(btn,id);
+}
+function estimatedCurrentKm(v){
+  const base=Number(v.km||0), monthly=Math.max(0,Number(v.monthlyKm||0));
+  if(!monthly)return base;
+  const start=v.kmReferenceDate||localDateKey();
+  const days=Math.max(0,(new Date(localDateKey()+'T12:00:00')-new Date(start+'T12:00:00'))/86400000);
+  return Math.round(base+monthly*(days/30.4375));
+}
+function serviceDueInfo(v,r){
+  const base=Number(r.km||0), interval=Number(r.repeatKm||0), est=estimatedCurrentKm(v);
+  const dueKm=interval>0?base+interval:null;
+  const kmLeft=dueKm===null?null:dueKm-est;
+  let dueDate=null, daysLeft=null;
+  if(Number(r.repeatMonths)>0 && r.date){const d=new Date(r.date+'T12:00:00');d.setMonth(d.getMonth()+Number(r.repeatMonths));dueDate=localDateKey(d);daysLeft=Math.floor((new Date(dueDate+'T12:00:00')-new Date(localDateKey()+'T12:00:00'))/86400000);}
+  const kmAlert=kmLeft!==null&&kmLeft<=1000;
+  const dateAlert=daysLeft!==null&&daysLeft<=30;
+  return {dueKm,kmLeft,dueDate,daysLeft,kmAlert,dateAlert,estimatedKm:est};
+}
+function serviceDueBanner(v){
+  const rows=(v.repairs||[]).filter(r=>Number(r.repeatKm)>0||Number(r.repeatMonths)>0).map(r=>({r,info:serviceDueInfo(v,r)})).filter(x=>x.info.kmAlert||x.info.dateAlert);
+  if(!rows.length)return '';
+  return `<div class="panel" style="border-color:#e6a23c;background:var(--card)"><b>⚠️ Nächster Service im Blick</b>${rows.map(({r,info})=>`<div class="item"><b>${esc(r.type||'Service')}${r.note?' – '+esc(r.note):''}</b><div class="muted">${info.dueKm!==null?`Ziel: ${info.dueKm.toLocaleString('de-DE')} km · ${info.kmLeft<=0?'Kilometerintervall erreicht':info.kmLeft.toLocaleString('de-DE')+' km verbleibend'}${info.kmAlert?' · ⚠️ 1.000-km-Hinweis':''}`:''}${info.dueDate?`${info.dueKm!==null?' · ':''}Fällig am ${formatDateDE(info.dueDate)}${info.daysLeft<=30?' · Zeitraum nähert sich':''}`:''}</div></div>`).join('')}</div>`;
+}
 function renderDetail(){
   if(!current)return;
   document.getElementById('home').classList.add('hidden');
@@ -934,6 +963,7 @@ function renderDetail(){
   </div>
 
   <div id="overviewTab" class="tab active">
+    ${serviceDueBanner(v)}
     <div class="panel"><b>🚦 Wartungsampel <button class="info-dot" aria-label="Information zur Wartungsampel" onclick="showInfoText(&quot;Wartungsampel&quot;,&quot;Berücksichtigt TÜV, offene Erinnerungen, Dokumentabläufe und erfasste Reifentiefe. Für automatische Wartungsintervalle bitte Erinnerungen anlegen.&quot;)">i</button></b><div class="status-line"><span class="dot ${maintenanceState(v).level==='ok'?'':maintenanceState(v).level}"></span><b>${esc(maintenanceState(v).label)}</b></div></div>
     <div class="panel"><b>Erinnerungen</b>
       ${reminders.length?reminders.map((r,i)=>({r,i})).sort((a,b)=>String(a.r.date||'').localeCompare(String(b.r.date||''))).slice(0,5).map(({r,i})=>`
@@ -952,17 +982,18 @@ function renderDetail(){
       ${repairs.length?repairs.map((r,i)=>({r,i})).sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||''))).slice(0,3).map(({r,i})=>`
         <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
         <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
-        <div>${esc(r.note||'')}</div>${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
+        <div>${esc(r.note||'')}</div>${r.type==='Ölwechsel'?`<div class="muted">Öl: ${esc(r.oilAmount||'–')} l · ${esc(r.oilType||'Ölsorte n. a.')} · Ölfilter ${esc(r.oilFilter||'n. a.')}</div>`:''}${r.type==='Filterwechsel'?`<div class="muted">Filter: ${esc((r.filters||[]).join(', ')||'–')}${r.filterParts?' · '+esc(r.filterParts):''}</div>`:''}${Number(r.repeatKm)>0||Number(r.repeatMonths)>0?`<div class="muted">Wiederholung: ${Number(r.repeatKm)>0?Number(r.repeatKm).toLocaleString('de-DE')+' km':''}${Number(r.repeatKm)>0&&Number(r.repeatMonths)>0?' oder ':''}${Number(r.repeatMonths)>0?r.repeatMonths+' Monate':''}</div>`:''}${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
         <div class="item-actions"><button class="secondary" onclick="editRepair(${i})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteRepair(${i})">Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Einträge.</div>'}
     </div>
   </div>
 
   <div id="serviceTab" class="tab">
+    ${serviceDueBanner(v)}
     <div class="panel"><b>Service & Reparaturen</b>
       ${repairs.length?repairs.map((r,i)=>({r,i})).sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||''))).map(({r,i})=>`
       <div class="item"><div class="row"><b>${esc(r.type||'Arbeit')}</b><span class="cost">${euro(r.cost)}</span></div>
       <div class="muted">${esc(r.date||'')} · ${r.km?Number(r.km).toLocaleString('de-DE')+' km':''}</div>
-      <div>${esc(r.note||'')}</div>${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
+      <div>${esc(r.note||'')}</div>${r.type==='Ölwechsel'?`<div class="muted">Öl: ${esc(r.oilAmount||'–')} l · ${esc(r.oilType||'Ölsorte n. a.')} · Ölfilter ${esc(r.oilFilter||'n. a.')}</div>`:''}${r.type==='Filterwechsel'?`<div class="muted">Filter: ${esc((r.filters||[]).join(', ')||'–')}${r.filterParts?' · '+esc(r.filterParts):''}</div>`:''}${Number(r.repeatKm)>0||Number(r.repeatMonths)>0?`<div class="muted">Wiederholung: ${Number(r.repeatKm)>0?Number(r.repeatKm).toLocaleString('de-DE')+' km':''}${Number(r.repeatKm)>0&&Number(r.repeatMonths)>0?' oder ':''}${Number(r.repeatMonths)>0?r.repeatMonths+' Monate':''}</div>`:''}${r.workshop?`<div class="muted">Werkstatt: ${esc(r.workshop)}</div>`:''}
       <div class="item-actions"><button class="secondary" onclick="editRepair(${i})">✏️ Bearbeiten</button><button class="secondary" onclick="deleteRepair(${i})">🗑 Löschen</button></div></div>`).join(''):'<div class="empty">Noch keine Einträge.</div>'}
       <button style="width:100%;margin-top:8px" onclick="addRepair()">＋ Service / Reparatur</button>
     </div>
@@ -1211,7 +1242,7 @@ async function deleteKmEntry(index){
   if(await save())renderDetail();
 }
 function newVehicle(){
-  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',power:'',displacement:'',fuelType:'',year:'',kba:'',vin:'',km:'',tuv:'',note:'',titlePhoto:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[],fuelLogs:[],tires:[],history:[],createdAt:new Date().toISOString()};
+  current={id:crypto.randomUUID?crypto.randomUUID():Date.now().toString()+Math.random(),type:'car',name:'',plate:'',model:'',power:'',displacement:'',fuelType:'',year:'',kba:'',vin:'',km:'',monthlyKm:'',kmReferenceDate:localDateKey(),tuv:'',note:'',titlePhoto:'',repairs:[],photos:[],documents:[],reminders:[],kmHistory:[],fuelLogs:[],tires:[],history:[],createdAt:new Date().toISOString()};
   formVehicle('Neues Fahrzeug');
 }
 function editVehicle(){formVehicle('Fahrzeug bearbeiten');}
@@ -1233,6 +1264,8 @@ function formVehicle(title){
   <label>KBA-Nummer (HSN / TSN)</label><input id="f_kba" value="${esc(v.kba||'')}" placeholder="z.B. 0603 / BQF">
   <label>FIN / VIN</label><input id="f_vin" value="${esc(v.vin)}">
   <label>Aktueller Kilometerstand</label><input id="f_km" value="${esc(v.km)}" inputmode="numeric">
+  <label>Durchschnittlich gefahrene Kilometer pro Monat</label><input id="f_monthlyKm" value="${esc(v.monthlyKm||'')}" inputmode="numeric" placeholder="z. B. 1200">
+  <div class="muted">Dient zur Schätzung des Kilometerstands für die Service-Erinnerung.</div>
   <label>TÜV bis</label><input id="f_tuv" type="date" value="${esc(v.tuv)}">
   <button onclick="saveVehicle()">Speichern</button> <button class="secondary" onclick="${db.vehicles.some(x=>x.id===v.id)?`openVehicle('${esc(v.id)}')`:'showHome()'}">Abbrechen</button>
   </div>`;
@@ -1249,7 +1282,10 @@ async function saveVehicle(){
   v.year=document.getElementById('f_year').value.trim();
   v.kba=document.getElementById('f_kba').value.trim();
   v.vin=document.getElementById('f_vin').value.trim();
+  const previousKm=Number(v.km||0);
   v.km=document.getElementById('f_km').value.trim();
+  v.monthlyKm=document.getElementById('f_monthlyKm').value.trim();
+  if(!v.kmReferenceDate || Number(v.km)!==previousKm) v.kmReferenceDate=localDateKey();
   v.tuv=document.getElementById('f_tuv').value;
   const existing=db.vehicles.find(x=>x.id===v.id);
   if(existing){
@@ -1261,20 +1297,32 @@ async function saveVehicle(){
 function addRepair(){
   const v=current;
   document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">Service / Reparatur</div>
-  <label>Datum</label><input id="r_date" type="date" value="${new Date().toISOString().slice(0,10)}">
+  <label>Datum</label><input id="r_date" type="date" value="${localDateKey()}">
   <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(v.km)}">
-  <label>Art</label><select id="r_type"><option>Service</option><option>Inspektion</option><option>Reparatur</option><option>Reifen</option><option>TÜV</option><option>Unfall</option><option>Sonstiges</option></select>
+  <label>Art</label><select id="r_type" onchange="toggleServiceFields()"><option>Service</option><option>Ölwechsel</option><option>Filterwechsel</option><option>Inspektion</option><option>Reparatur</option><option>Reifen</option><option>TÜV</option><option>Unfall</option><option>Sonstiges</option></select>
+  <div id="oilFields" class="hidden"><label>Ölmenge (Liter)</label><input id="r_oilAmount" inputmode="decimal" placeholder="z. B. 4,5"><label>Ölsorte / Viskosität / Freigabe</label><input id="r_oilType" placeholder="z. B. 5W-30"><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" placeholder="Hersteller und Teilenummer"></div>
+  <div id="filterFields" class="hidden"><label>Filter auswählen (Mehrfachauswahl möglich)</label><label class="entry-form-check"><input type="checkbox" id="r_filterAir"> Luftfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterCabin"> Innenraumfilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterFuel"> Kraftstofffilter</label><label class="entry-form-check"><input type="checkbox" id="r_filterOil"> Ölfilter</label><label>Filter-Teilenummern / Hersteller (optional)</label><input id="r_filterParts" placeholder="z. B. Luftfilter: …"></div>
+  <label>Wiederholung nach Kilometern (optional)</label><input id="r_repeatKm" inputmode="numeric" placeholder="z. B. 15000">
+  <label>Wiederholung nach Monaten (optional)</label><select id="r_repeatMonths"><option value="0">Kein Zeitintervall</option><option value="3">3 Monate</option><option value="6">6 Monate</option><option value="12">12 Monate</option><option value="18">18 Monate</option><option value="24">24 Monate</option><option value="36">36 Monate</option></select>
+  <div class="muted">Bei einem Kilometerintervall wird 1.000 km vor dem errechneten nächsten Service ein Hinweis angezeigt. Die Schätzung nutzt die monatliche Fahrleistung aus den Fahrzeugdaten.</div>
   <label>Was wurde gemacht?</label><textarea id="r_note" rows="4"></textarea>
   <label>Werkstatt</label><input id="r_workshop">
   <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal">
   <button onclick="saveRepair()">Speichern</button> <button class="secondary" onclick="renderDetail()">Abbrechen</button></div>`;
+  toggleServiceFields();
+}
+function toggleServiceFields(){
+  const type=document.getElementById('r_type')?.value;
+  document.getElementById('oilFields')?.classList.toggle('hidden',type!=='Ölwechsel');
+  document.getElementById('filterFields')?.classList.toggle('hidden',type!=='Filterwechsel');
 }
 async function saveRepair(){
   const v=current;
   v.repairs=v.repairs||[];
-  const entry={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value};
+  const type=document.getElementById('r_type').value;
+  const entry={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,repeatKm:document.getElementById('r_repeatKm').value,repeatMonths:document.getElementById('r_repeatMonths').value,oilAmount:type==='Ölwechsel'?document.getElementById('r_oilAmount').value:'',oilType:type==='Ölwechsel'?document.getElementById('r_oilType').value:'',oilFilter:type==='Ölwechsel'?document.getElementById('r_oilFilter').value:'',filters:type==='Filterwechsel'?['Luftfilter','Innenraumfilter','Kraftstofffilter','Ölfilter'].filter((x,i)=>document.getElementById(['r_filterAir','r_filterCabin','r_filterFuel','r_filterOil'][i])?.checked):[],filterParts:type==='Filterwechsel'?document.getElementById('r_filterParts').value:''};
   v.repairs.push(entry);
-  const oldKm=num(v.km);v.km=document.getElementById('r_km').value;
+  const oldKm=num(v.km);v.km=document.getElementById('r_km').value;if(num(v.km)!==oldKm)v.kmReferenceDate=entry.date||localDateKey();
   if(num(v.km)>0&&num(v.km)!==oldKm){v.kmHistory=v.kmHistory||[];v.kmHistory.push({date:entry.date,km:String(v.km),note:'Bei Service/Reparatur erfasst'});}
   logHistory('Service/Reparatur hinzugefügt',`${entry.type} · ${entry.date} · ${euro(entry.cost)}`);
   if(await save())renderDetail();
@@ -1285,7 +1333,7 @@ function editRepair(index){
   document.getElementById('detailContent').innerHTML=`<div class="panel"><div class="title">Service / Reparatur bearbeiten</div>
   <label>Datum</label><input id="r_date" type="date" value="${esc(r.date||'')}">
   <label>Kilometerstand</label><input id="r_km" inputmode="numeric" value="${esc(r.km??v.km??'')}">
-  <label>Art</label><select id="r_type">${['Service','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select>
+  <label>Art</label><select id="r_type">${['Service','Ölwechsel','Filterwechsel','Inspektion','Reparatur','Reifen','TÜV','Unfall','Sonstiges'].map(x=>`<option ${r.type===x?'selected':''}>${x}</option>`).join('')}</select><label>Ölmenge (Liter)</label><input id="r_oilAmount" value="${esc(r.oilAmount||'')}"><label>Ölsorte / Viskosität</label><input id="r_oilType" value="${esc(r.oilType||'')}"><label>Ölfilter – Art / Teilenummer</label><input id="r_oilFilter" value="${esc(r.oilFilter||'')}"><label>Filterarten (Komma getrennt)</label><input id="r_filters" value="${esc((r.filters||[]).join(', '))}"><label>Filter-Teilenummern / Hersteller</label><input id="r_filterParts" value="${esc(r.filterParts||'')}"><label>Wiederholung nach Kilometern</label><input id="r_repeatKm" value="${esc(r.repeatKm||'')}" inputmode="numeric"><label>Wiederholung nach Monaten</label><select id="r_repeatMonths">${[0,3,6,12,18,24,36].map(n=>`<option value="${n}" ${Number(r.repeatMonths||0)===n?'selected':''}>${n===0?'Kein Zeitintervall':n+' Monate'}</option>`).join('')}</select>
   <label>Was wurde gemacht?</label><textarea id="r_note" rows="4">${esc(r.note||'')}</textarea>
   <label>Werkstatt</label><input id="r_workshop" value="${esc(r.workshop||'')}">
   <label>Kosten brutto (€)</label><input id="r_cost" inputmode="decimal" value="${esc(r.cost??'')}">
@@ -1295,8 +1343,9 @@ async function updateRepair(index){
   const v=current;
   if(!v?.repairs?.[index])return;
   const before=v.repairs[index];
-  v.repairs[index]={date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type:document.getElementById('r_type').value,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value};
-  v.km=document.getElementById('r_km').value;logHistory('Service/Reparatur bearbeitet',`${before.type||'Eintrag'} · ${v.repairs[index].date}`);
+  const type=document.getElementById('r_type').value;
+  v.repairs[index]={...before,date:document.getElementById('r_date').value,km:document.getElementById('r_km').value,type,note:document.getElementById('r_note').value,workshop:document.getElementById('r_workshop').value,cost:document.getElementById('r_cost').value,oilAmount:document.getElementById('r_oilAmount')?.value||'',oilType:document.getElementById('r_oilType')?.value||'',oilFilter:document.getElementById('r_oilFilter')?.value||'',filters:(document.getElementById('r_filters')?.value||'').split(',').map(x=>x.trim()).filter(Boolean),filterParts:document.getElementById('r_filterParts')?.value||'',repeatKm:document.getElementById('r_repeatKm')?.value||'',repeatMonths:document.getElementById('r_repeatMonths')?.value||'0'};
+  v.km=document.getElementById('r_km').value;v.kmReferenceDate=localDateKey();logHistory('Service/Reparatur bearbeitet',`${before.type||'Eintrag'} · ${v.repairs[index].date}`);
   if(await save())renderDetail();
 }
 async function deleteRepair(index){
@@ -1405,7 +1454,7 @@ async function addKmEntry(){
   const date=prompt("Datum (JJJJ-MM-TT):",new Date().toISOString().slice(0,10));
   if(!date)return;
   const note=prompt("Notiz (optional):","")||"";
-  current.km=String(Math.round(n));
+  current.km=String(Math.round(n));current.kmReferenceDate=date;
   current.kmHistory=current.kmHistory||[];
   current.kmHistory.push({date,km:current.km,note});logHistory('Kilometerstand erfasst',`${current.km} km · ${date}${note?' · '+note:''}`);
   if(await save())renderDetail();

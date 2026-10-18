@@ -28,7 +28,7 @@
 :root[data-theme="dark"] .notice.success{background:#244b37;color:#b5f1c9}
 :root[data-theme="dark"] .stat.term-green{background:#203c2e;border-color:#356c4a}
 :root[data-theme="dark"] .stat.term-yellow{background:#42351e;border-color:#7a602c}
-:root[data-theme="dark"] .stat.term-red{background:#432626;border-color:#7c4141}
+:root[data-theme="dark"] .stat.term-red{background:#432626;border-color:#7c4141} :root[data-theme="dark"] .stat.term-orange{background:#4b321e;border-color:#c7792c}
 :root[data-theme="dark"] .empty{color:#a9b6c2}
 :root[data-theme="dark"] .info-dot{color:#a9b6c2}
 :root[data-theme="dark"] .photo-zoom-close{background:#e8eff5;color:#172b3d}
@@ -80,7 +80,7 @@ button:active{transform:scale(.98)}
 .badge.warn{background:#fff0cf;color:#8a5200}.badge.danger{background:#f9dddd;color:#a51e14}
 .empty{text-align:center;padding:30px 10px;color:#78838b}
 .section-title{font-size:14px;font-weight:750;margin:16px 3px 7px}
-.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:9px 0}.stat.full-width{grid-column:1/-1}.stat.term-green{background:#e8f4ea;border-color:#b8dfc2}.stat.term-yellow{background:#fff0cf;border-color:#f0d28a}.stat.term-red{background:#f9dddd;border-color:#e9a8a3}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:9px 0}.stat.full-width{grid-column:1/-1}.stat.term-green{background:#e8f4ea;border-color:#b8dfc2}.stat.term-yellow{background:#fff0cf;border-color:#f0d28a}.stat.term-red{background:#f9dddd;border-color:#e9a8a3}.stat.term-orange{background:#ffe4c2;border-color:#f3a34b}
 .stat{background:#fff;border-radius:15px;padding:12px;border:1px solid #edf0f2}
 .stat span{font-size:11px;color:var(--muted)}.stat b{display:block;font-size:18px;margin-top:4px}
 .notice{padding:11px;border-radius:13px;background:#fff0cf;margin:8px 0;font-size:12px}
@@ -486,31 +486,6 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 .search-suggestions-empty{padding:12px;font-size:14px;color:var(--muted)}
 </style>
 
-
-<style id="vehicle-card-theme-borders-v34">
-/* Fahrzeugkarten: dunkelblauer Rand im Hellmodus, neon-dunkelblauer Rand im Darkmode */
-#vehicleList > .card {
-  border: 2px solid #173d78 !important;
-  box-shadow: 0 2px 8px rgba(23,61,120,.10);
-  transition: border-color .18s ease, box-shadow .18s ease;
-}
-#vehicleList > .card:focus-visible {
-  outline: 2px solid #4f86df;
-  outline-offset: 2px;
-}
-:root[data-theme="dark"] #vehicleList > .card {
-  border: 2px solid #1747a8 !important;
-  box-shadow: 0 0 0 1px rgba(23,71,168,.28), 0 0 10px rgba(27,91,220,.22);
-}
-@media (hover:hover) {
-  #vehicleList > .card:hover { border-color: #2457a4 !important; }
-  :root[data-theme="dark"] #vehicleList > .card:hover {
-    border-color: #2672ff !important;
-    box-shadow: 0 0 0 1px rgba(38,114,255,.35), 0 0 14px rgba(38,114,255,.32);
-  }
-}
-</style>
-
 </head>
 <body class="booting">
 <header>
@@ -860,7 +835,7 @@ function render(){
       }
     });
   });
-  const appointmentClass=overdue>0?'term-red':upcoming>0?(db.vehicles.some(v=>(v.reminders||[]).some(r=>!r.done&&r.date&&((new Date(r.date+"T00:00:00")-now)/86400000)<=14&&((new Date(r.date+"T00:00:00")-now)/86400000)>=0)|| (v.tuv&&((new Date(v.tuv+"T00:00:00")-now)/86400000)<=14&&((new Date(v.tuv+"T00:00:00")-now)/86400000)>=0))?'term-yellow':'term-green'):'';
+  const appointmentDates=[];db.vehicles.forEach(v=>{if(v.tuv)appointmentDates.push(v.tuv);(v.reminders||[]).filter(r=>!r.done&&r.date).forEach(r=>appointmentDates.push(r.date));});const appointmentDeltas=appointmentDates.map(date=>Math.floor((new Date(date+'T12:00:00').getTime()-new Date(localDateKey()+'T12:00:00').getTime())/86400000));const appointmentClass=appointmentDeltas.some(d=>d<0)?'term-red':appointmentDeltas.some(d=>d===0)?'term-orange':appointmentDeltas.some(d=>d<=5)?'term-yellow':appointmentDeltas.length?'term-green':'';
   document.getElementById('dashboard').innerHTML=`
     <div class="stat-grid">
       <div class="stat"><span>Fahrzeuge</span><b>${db.vehicles.length}</b></div>

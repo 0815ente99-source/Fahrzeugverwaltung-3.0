@@ -468,6 +468,24 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 }
 </style>
 
+
+<style>
+/* v33: mobile-friendly live vehicle suggestions directly below search */
+.search-suggestions{margin:-5px 0 12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);box-shadow:0 5px 18px #0002;position:relative;z-index:20}
+.search-suggestions.hidden{display:none}
+.search-suggestion{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:9px 12px;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:var(--card);color:var(--text);font-size:15px;touch-action:manipulation}
+.search-suggestion:last-child{border-bottom:0}
+.search-suggestion:active,.search-suggestion:focus{background:#dceaf6;color:#17212b;outline:2px solid #6ca8dc;outline-offset:-2px}
+.search-suggestion .suggestion-copy{min-width:0;flex:1}
+.search-suggestion .suggestion-name{font-weight:700;overflow-wrap:anywhere}
+.search-suggestion .suggestion-meta{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+:root[data-theme="dark"] .search-suggestions{background:#1c2732;border-color:#536575}
+:root[data-theme="dark"] .search-suggestion{background:#1c2732;color:#f3f6f9;border-color:#354653}
+:root[data-theme="dark"] .search-suggestion .suggestion-meta{color:#c0ccd6}
+:root[data-theme="dark"] .search-suggestion:active,:root[data-theme="dark"] .search-suggestion:focus{background:#344f65;color:#fff}
+.search-suggestions-empty{padding:12px;font-size:14px;color:var(--muted)}
+</style>
+
 </head>
 <body class="booting">
 <header>
@@ -477,7 +495,7 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
 
 <main>
 <section id="home">
-  <input id="search" class="search" placeholder="🔎 Fahrzeug suchen…">
+  <input id="search" class="search" placeholder="🔎 Fahrzeug suchen…" autocomplete="off" aria-autocomplete="list" aria-controls="searchSuggestions"><div id="searchSuggestions" class="search-suggestions hidden" role="listbox" aria-label="Fahrzeugvorschläge"></div>
 
   <div id="dashboard"></div>
 
@@ -780,6 +798,21 @@ function averageFuelConsumption(logs){
   return totalKm>0?totalLiters/totalKm*100:null;
 }
 
+function renderVehicleSearchSuggestions(query,vehicles){
+  const host=document.getElementById('searchSuggestions');
+  if(!host)return;
+  if(!query.trim()) {host.classList.add('hidden');host.innerHTML='';return;}
+  const matches=vehicles.slice(0,6);
+  if(!matches.length){host.innerHTML='<div class="search-suggestions-empty">Keine passenden Fahrzeuge gefunden</div>';host.classList.remove('hidden');return;}
+  host.innerHTML=matches.map(v=>`<button type="button" class="search-suggestion" role="option" aria-label="Fahrzeug ${esc(v.name||'Fahrzeug')} öffnen" onclick="selectVehicleSuggestion('${String(v.id).replace(/'/g, '&#39;')}')"><span aria-hidden="true">${v.titlePhoto?`<img src="${v.titlePhoto}" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:7px">`:vehicleIcon(v)}</span><span class="suggestion-copy"><span class="suggestion-name">${esc(v.name||'Fahrzeug')}</span><span class="suggestion-meta">${esc([v.plate,v.model,vehicleType(v)].filter(Boolean).join(' · '))}</span></span><span aria-hidden="true">›</span></button>`).join('');
+  host.classList.remove('hidden');
+}
+function selectVehicleSuggestion(id){
+  const host=document.getElementById('searchSuggestions');
+  host?.classList.add('hidden');
+  openVehicle(id);
+}
+
 function render(){
   const q=(document.getElementById('search')?.value||'').toLowerCase();
   const list=document.getElementById('vehicleList');
@@ -813,7 +846,8 @@ function render(){
   // Fahrzeuge mit der neuesten Änderung stehen oben. Alte Einträge ohne Zeitstempel bleiben darunter.
   const vs=db.vehicles.filter(v=>`${v.name} ${v.plate} ${v.model} ${v.kba||''} ${vehicleType(v)}`.toLowerCase().includes(q))
     .slice().sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
-  if(!vs.length){list.innerHTML='<div class="empty">Noch keine Fahrzeuge angelegt.</div>';return;}
+  renderVehicleSearchSuggestions(q,vs);
+  if(!vs.length){list.innerHTML='<div class="empty">'+(db.vehicles.length?'Keine passenden Fahrzeuge gefunden.':'Noch keine Fahrzeuge angelegt.')+'</div>';return;}
   list.innerHTML=vs.map(v=>`<div class="card" onclick="openVehicle('${esc(v.id)}')">
     <div class="vehicle-top">
       <div class="vehicle-icon">${v.titlePhoto?`<img class="vehicle-title-photo" src="${v.titlePhoto}" alt="Titelbild von ${esc(v.name||'Fahrzeug')}" loading="lazy">`:vehicleIcon(v)}</div>
@@ -1615,7 +1649,7 @@ window.addEventListener('appinstalled',()=>{
   deferredInstallPrompt=null;
 });
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-  navigator.serviceWorker.register('./sw.js?v=29', {updateViaCache:'none'}).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=33', {updateViaCache:'none'}).catch(()=>{});
 }
 // Android-Zurücktaste innerhalb der PWA abfangen: erst innerhalb der App zurückgehen,
 // auf der Startansicht bleiben statt die App durch den Zurück-Verlauf zu verlassen.

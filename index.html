@@ -1733,8 +1733,25 @@ async function chooseBackupFolder(){
   if(!window.isSecureContext || typeof window.showDirectoryPicker!=='function'){
     alert('Dieser Browser stellt keine dauerhafte Ordnerauswahl bereit. Die normale JSON-Sicherung funktioniert weiterhin über den Download. Bitte Chrome/Android aktualisieren oder die Sicherung nach dem Download im gewünschten Ordner ablegen.');return;
   }
-  try{const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});if(!handle) return;await idbPutKey(BACKUP_FOLDER_KEY,handle);await updateBackupFolderStatus();alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Beim nächsten Backup wird der Zugriff geprüft.');}
-  catch(e){if(e.name!=='AbortError')alert('Der Sicherungsordner konnte nicht gespeichert werden. Deine Fahrzeugdaten wurden nicht verändert.');}
+  try{
+    const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});
+    if(!handle) return;
+    // Request write permission immediately during the folder-picker user gesture.
+    let permission=await handle.queryPermission({mode:'readwrite'});
+    if(permission!=='granted') permission=await handle.requestPermission({mode:'readwrite'});
+    if(permission!=='granted'){
+      alert('Der Ordner wurde ausgewählt, aber Schreibzugriff wurde nicht erteilt. Bitte wähle den Ordner erneut und erlaube den Zugriff.');
+      return;
+    }
+    await idbPutKey(BACKUP_FOLDER_KEY,handle);
+    await updateBackupFolderStatus();
+    alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Die App kann dort jetzt Sicherungen ablegen.');
+  } catch(e){
+    if(e.name!=='AbortError') {
+      console.error('Sicherungsordner konnte nicht festgelegt werden:',e);
+      alert('Der Sicherungsordner konnte nicht gespeichert werden. Deine Fahrzeugdaten wurden nicht verändert.');
+    }
+  }
 }
 // Verschlüsselte Backups: AES-GCM mit einem aus dem Passwort abgeleiteten PBKDF2-Schlüssel.
 function bytesToBase64(bytes){let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
@@ -1767,7 +1784,7 @@ async function backup(){
   const confirmPassword=prompt('Passwort zur Kontrolle erneut eingeben:');
   if(confirmPassword===null)return;
   if(password!==confirmPassword){alert('Die Passwörter stimmen nicht überein. Es wurde keine Sicherung erstellt.');return;}
-  const backupDate=new Date();const pad=n=>String(n).padStart(2,'0');const filename='Backup 0815 + '+pad(backupDate.getDate())+'.'+pad(backupDate.getMonth()+1)+'.'+backupDate.getFullYear()+' '+pad(backupDate.getHours())+':'+pad(backupDate.getMinutes())+'Uhr.json';
+  const backupDate=new Date();const pad=n=>String(n).padStart(2,'0');const filename='Backup 0815 + '+pad(backupDate.getDate())+'.'+pad(backupDate.getMonth()+1)+'.'+backupDate.getFullYear()+' '+pad(backupDate.getHours())+'.'+pad(backupDate.getMinutes())+'Uhr.json';
   const plain=JSON.stringify({...db,backupVersion:2,backupCreatedAt:new Date().toISOString()},null,2);
   let json;
   try{json=JSON.stringify(await encryptBackupPayload(plain,password),null,2);}

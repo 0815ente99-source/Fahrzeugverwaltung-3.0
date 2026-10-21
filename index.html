@@ -1767,7 +1767,7 @@ async function backup(){
   const confirmPassword=prompt('Passwort zur Kontrolle erneut eingeben:');
   if(confirmPassword===null)return;
   if(password!==confirmPassword){alert('Die Passwörter stimmen nicht überein. Es wurde keine Sicherung erstellt.');return;}
-  const filename='fuhrpark-sicherung-verschluesselt-'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.json';
+  const backupDate=new Date();const pad=n=>String(n).padStart(2,'0');const filename='Backup 0815 + '+pad(backupDate.getDate())+'.'+pad(backupDate.getMonth()+1)+'.'+backupDate.getFullYear()+' '+pad(backupDate.getHours())+':'+pad(backupDate.getMinutes())+'Uhr.json';
   const plain=JSON.stringify({...db,backupVersion:2,backupCreatedAt:new Date().toISOString()},null,2);
   let json;
   try{json=JSON.stringify(await encryptBackupPayload(plain,password),null,2);}

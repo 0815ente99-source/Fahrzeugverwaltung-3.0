@@ -39,3 +39,7 @@ Repository auf GitHub hochladen und unter **Settings → Pages** den Branch `mai
 - Import erkennt das verschlüsselte Format und fragt nach dem Passwort. Ältere unverschlüsselte JSON-Backups bleiben importierbar, nach einer deutlichen Bestätigung.
 - Verschlüsselung erfordert HTTPS bzw. einen sicheren Browserkontext mit Web Crypto.
 - Wichtig: Diese Änderung verschlüsselt neu erzeugte Backup-Dateien. Bereits vorhandene JSON-Dateien bleiben unverschlüsselt und sollten nach Erstellung einer neuen Sicherung geschützt oder gelöscht werden.
+
+
+### Dateiname der Sicherung
+Neue verschlüsselte Sicherungen verwenden das Namensformat `Backup 0815 + tt.mm.jjjj 00:00Uhr.json`, wobei Datum und Uhrzeit zur Erstellung aus der lokalen Gerätezeit stammen.

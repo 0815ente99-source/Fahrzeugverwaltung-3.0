@@ -30,16 +30,3 @@ Hinweis: Ohne zusätzlichen Push-Dienst sind Erinnerungen bei vollständig gesch
 
 ## GitHub Pages
 Repository auf GitHub hochladen und unter **Settings → Pages** den Branch `main` und `/ (root)` aktivieren. Danach die erzeugte Pages-Adresse auf Android/Chrome öffnen und über **⋮ → App installieren** zum Startbildschirm hinzufügen.
-
-
-## Verschlüsselte JSON-Sicherungen (v40)
-- Neue JSON-Sicherungen werden vor dem Speichern mit AES-256-GCM verschlüsselt.
-- Der Schlüssel wird aus einem vom Nutzer eingegebenen Passwort mit PBKDF2-SHA-256 (310.000 Iterationen) abgeleitet; jede Sicherung erhält zufälliges Salt und IV.
-- Das Passwort wird nicht in der App gespeichert. Ohne Passwort ist eine Wiederherstellung nicht möglich. Passwort sicher separat aufbewahren.
-- Import erkennt das verschlüsselte Format und fragt nach dem Passwort. Ältere unverschlüsselte JSON-Backups bleiben importierbar, nach einer deutlichen Bestätigung.
-- Verschlüsselung erfordert HTTPS bzw. einen sicheren Browserkontext mit Web Crypto.
-- Wichtig: Diese Änderung verschlüsselt neu erzeugte Backup-Dateien. Bereits vorhandene JSON-Dateien bleiben unverschlüsselt und sollten nach Erstellung einer neuen Sicherung geschützt oder gelöscht werden.
-
-
-### Dateiname der Sicherung
-Neue verschlüsselte Sicherungen verwenden das Namensformat `Backup 0815 + tt.mm.jjjj 00:00Uhr.json`, wobei Datum und Uhrzeit zur Erstellung aus der lokalen Gerätezeit stammen.

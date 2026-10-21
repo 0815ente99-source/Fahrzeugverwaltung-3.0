@@ -1729,29 +1729,31 @@ const BACKUP_FOLDER_KEY='fuhrpark_backup_directory_handle_v1';
 async function idbGetKey(key){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);tx.oncomplete=()=>d.close();tx.onerror=()=>{d.close();reject(tx.error);};});}
 async function idbPutKey(key,value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,key);tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
 async function updateBackupFolderStatus(){const el=document.getElementById('backupFolderStatus');if(!el)return;try{const handle=await idbGetKey(BACKUP_FOLDER_KEY);el.textContent=handle?'Sicherungsordner: '+handle.name+' (gespeichert)':'Sicherungsordner: noch nicht festgelegt';}catch(e){el.textContent='Sicherungsordner: Status nicht verfügbar';}}
+async function saveBackupFileForDevice(filename,json){
+  const file=new File([json],filename,{type:'application/json'});
+  // Mobile browsers generally cannot retain a writable directory handle. The native share
+  // sheet lets the user choose Files/Downloads or another destination where supported.
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Verschlüsselte Fuhrpark-Sicherung'});return 'shared';}
+    catch(e){if(e && e.name==='AbortError')return 'cancelled';console.warn('Teilen/Speichern abgebrochen oder nicht verfügbar:',e);}
+  }
+  const blob=new Blob([json],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);return 'download';
+}
 async function chooseBackupFolder(){
   if(!window.isSecureContext || typeof window.showDirectoryPicker!=='function'){
-    alert('Dieser Browser stellt keine dauerhafte Ordnerauswahl bereit. Die normale JSON-Sicherung funktioniert weiterhin über den Download. Bitte Chrome/Android aktualisieren oder die Sicherung nach dem Download im gewünschten Ordner ablegen.');return;
+    alert('Dieser Browser unterstützt keine dauerhafte Ordnerfreigabe (häufig auf iPhone/iPad und manchen Android-Browsern). Beim Erstellen der Sicherung öffnen wir stattdessen – sofern verfügbar – das Teilen-/Speichern-Menü des Handys. Wähle dort „In Dateien sichern“, „Downloads“ oder einen gewünschten Ordner.');return;
   }
   try{
     const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});
-    if(!handle) return;
-    // Request write permission immediately during the folder-picker user gesture.
+    if(!handle)return;
     let permission=await handle.queryPermission({mode:'readwrite'});
-    if(permission!=='granted') permission=await handle.requestPermission({mode:'readwrite'});
-    if(permission!=='granted'){
-      alert('Der Ordner wurde ausgewählt, aber Schreibzugriff wurde nicht erteilt. Bitte wähle den Ordner erneut und erlaube den Zugriff.');
-      return;
-    }
+    if(permission!=='granted')permission=await handle.requestPermission({mode:'readwrite'});
+    if(permission!=='granted'){alert('Der Ordner wurde ausgewählt, aber Schreibzugriff wurde nicht erteilt. Bitte erneut versuchen und Zugriff erlauben.');return;}
     await idbPutKey(BACKUP_FOLDER_KEY,handle);
     await updateBackupFolderStatus();
-    alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Die App kann dort jetzt Sicherungen ablegen.');
-  } catch(e){
-    if(e.name!=='AbortError') {
-      console.error('Sicherungsordner konnte nicht festgelegt werden:',e);
-      alert('Der Sicherungsordner konnte nicht gespeichert werden. Deine Fahrzeugdaten wurden nicht verändert.');
-    }
-  }
+    alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Beim nächsten Backup wird der Zugriff geprüft.');
+  }catch(e){if(e.name!=='AbortError'){console.error(e);alert('Der Sicherungsordner konnte nicht gespeichert werden. Bitte beim Backup das Speichern-Menü des Handys verwenden.');}}
+
 }
 // Verschlüsselte Backups: AES-GCM mit einem aus dem Passwort abgeleiteten PBKDF2-Schlüssel.
 function bytesToBase64(bytes){let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
@@ -1804,7 +1806,9 @@ async function backup(){
       alert('Ordnerzugriff nicht erteilt. Die verschlüsselte Datei wird heruntergeladen.');
     }
   }catch(e){console.error('Backup im Ordner fehlgeschlagen:',e);alert('Speichern im festgelegten Ordner war nicht möglich. Die verschlüsselte Datei wird heruntergeladen.');}
-  const blob=new Blob([json],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const result=await saveBackupFileForDevice(filename,json);
+  if(result==='shared')alert('Die verschlüsselte Sicherungsdatei wurde an das Speichern-/Teilen-Menü übergeben. Wähle dort den gewünschten Ordner, z. B. „Dateien“ oder „Downloads“.');
+  else if(result==='cancelled')alert('Speichern abgebrochen. Es wurde keine Datei an einem Zielort abgelegt.');
 }
 function installApp(){
   if(deferredInstallPrompt){

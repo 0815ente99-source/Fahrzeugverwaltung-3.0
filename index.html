@@ -1729,19 +1729,53 @@ const BACKUP_FOLDER_KEY='fuhrpark_backup_directory_handle_v1';
 async function idbGetKey(key){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);tx.oncomplete=()=>d.close();tx.onerror=()=>{d.close();reject(tx.error);};});}
 async function idbPutKey(key,value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,key);tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
 async function updateBackupFolderStatus(){const el=document.getElementById('backupFolderStatus');if(!el)return;try{const handle=await idbGetKey(BACKUP_FOLDER_KEY);el.textContent=handle?'Sicherungsordner: '+handle.name+' (gespeichert)':'Sicherungsordner: noch nicht festgelegt';}catch(e){el.textContent='Sicherungsordner: Status nicht verfügbar';}}
-async function saveBackupFileForDevice(filename,json){
-  const file=new File([json],filename,{type:'application/json'});
-  // Mobile browsers generally cannot retain a writable directory handle. The native share
-  // sheet lets the user choose Files/Downloads or another destination where supported.
-  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-    try{await navigator.share({files:[file],title:'Verschlüsselte Fuhrpark-Sicherung'});return 'shared';}
-    catch(e){if(e && e.name==='AbortError')return 'cancelled';console.warn('Teilen/Speichern abgebrochen oder nicht verfügbar:',e);}
+let pendingMobileBackup=null;
+function showMobileBackupSavePanel(filename,json){
+  pendingMobileBackup={filename,json};
+  let panel=document.getElementById('mobileBackupSavePanel');
+  if(!panel){
+    panel=document.createElement('div');panel.id='mobileBackupSavePanel';
+    panel.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px';
+    panel.innerHTML='<div style="background:var(--card,#fff);color:var(--text,#111);border-radius:16px;padding:22px;max-width:420px;width:100%;box-shadow:0 10px 40px #0005"><h3 style="margin-top:0">Verschlüsselte Sicherung bereit</h3><p>Tippe auf „Datei speichern / teilen“. Wähle im Menü deines Handys anschließend „In Dateien sichern“, „Downloads“ oder den gewünschten Speicherort.</p><p id="mobileBackupFileName" style="font-size:13px;overflow-wrap:anywhere"></p><button id="mobileBackupSaveNow" style="width:100%;margin:8px 0;padding:13px">📁 Datei speichern / teilen</button><button id="mobileBackupCancel" class="secondary" style="width:100%;padding:11px">Abbrechen</button><p style="font-size:12px;opacity:.8">Die Datei ist bereits verschlüsselt. Das Teilen-Menü wird erst nach deinem Tippen geöffnet.</p></div>';
+    document.body.appendChild(panel);
+    panel.querySelector('#mobileBackupSaveNow').addEventListener('click',savePendingMobileBackup);
+    panel.querySelector('#mobileBackupCancel').addEventListener('click',()=>{pendingMobileBackup=null;panel.remove();});
   }
-  const blob=new Blob([json],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);return 'download';
+  panel.querySelector('#mobileBackupFileName').textContent=filename;
+  panel.style.display='flex';
+}
+async function savePendingMobileBackup(){
+  const data=pendingMobileBackup;
+  if(!data)return;
+  const panel=document.getElementById('mobileBackupSavePanel');
+  const btn=document.getElementById('mobileBackupSaveNow');
+  btn.disabled=true;btn.textContent='Wird geöffnet …';
+  const file=new File([data.json],data.filename,{type:'application/json'});
+  // Called directly from the user's button click, preserving mobile user activation.
+  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:'Verschlüsselte Fuhrpark-Sicherung'});
+      pendingMobileBackup=null;panel?.remove();
+      alert('Das Teilen-/Speichern-Menü wurde geöffnet. Bitte wähle dort den gewünschten Ordner.');
+      return;
+    }catch(e){
+      if(e && e.name==='AbortError'){
+        btn.disabled=false;btn.textContent='📁 Erneut versuchen';return;
+      }
+      console.warn('Dateifreigabe nicht verfügbar:',e);
+    }
+  }
+  // Fallback: browser download, usually into Downloads; a custom folder cannot be forced by a webpage.
+  const blob=new Blob([data.json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');
+  a.href=url;a.download=data.filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  pendingMobileBackup=null;panel?.remove();
+  alert('Der Download wurde gestartet. Falls kein Speichermenü erscheint, liegt die Datei normalerweise im Ordner „Downloads“.');
 }
 async function chooseBackupFolder(){
   if(!window.isSecureContext || typeof window.showDirectoryPicker!=='function'){
-    alert('Dieser Browser unterstützt keine dauerhafte Ordnerfreigabe (häufig auf iPhone/iPad und manchen Android-Browsern). Beim Erstellen der Sicherung öffnen wir stattdessen – sofern verfügbar – das Teilen-/Speichern-Menü des Handys. Wähle dort „In Dateien sichern“, „Downloads“ oder einen gewünschten Ordner.');return;
+    alert('Dieser Browser unterstützt keine dauerhafte Ordnerfreigabe. Das ist eine Einschränkung des Handy-Browsers. Erstelle die Sicherung und tippe im nächsten Fenster auf „Datei speichern / teilen“; wähle dann im Systemmenü „In Dateien sichern“, „Downloads“ oder einen Ordner.');return;
   }
   try{
     const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});
@@ -1806,9 +1840,8 @@ async function backup(){
       alert('Ordnerzugriff nicht erteilt. Die verschlüsselte Datei wird heruntergeladen.');
     }
   }catch(e){console.error('Backup im Ordner fehlgeschlagen:',e);alert('Speichern im festgelegten Ordner war nicht möglich. Die verschlüsselte Datei wird heruntergeladen.');}
-  const result=await saveBackupFileForDevice(filename,json);
-  if(result==='shared')alert('Die verschlüsselte Sicherungsdatei wurde an das Speichern-/Teilen-Menü übergeben. Wähle dort den gewünschten Ordner, z. B. „Dateien“ oder „Downloads“.');
-  else if(result==='cancelled')alert('Speichern abgebrochen. Es wurde keine Datei an einem Zielort abgelegt.');
+  // Open a dedicated save action so the phone's native share sheet is triggered by a fresh tap.
+  showMobileBackupSavePanel(filename,json);
 }
 function installApp(){
   if(deferredInstallPrompt){

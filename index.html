@@ -696,6 +696,35 @@ let formOriginalKm='';
 
 const IDB_NAME='fuhrpark_datenbank_v1';
 const IDB_STORE='appdata';
+// Lokale Fahrzeugdaten werden ausschließlich als AES-256-GCM-Chiffretext in IndexedDB abgelegt.
+// Das Kennwort bleibt nur während der geöffneten Sitzung im Arbeitsspeicher.
+let localDataPassword=null;
+const LOCAL_ENCRYPTED_FORMAT='fuhrpark-local-encrypted-v1';
+async function encryptLocalDB(value,password){
+  const envelope=await encryptBackupPayload(JSON.stringify(value),password);
+  return {format:LOCAL_ENCRYPTED_FORMAT,envelope};
+}
+async function decryptLocalDB(record,password){
+  if(!record || record.format!==LOCAL_ENCRYPTED_FORMAT || !record.envelope)throw new Error('Ungültiges verschlüsseltes Datenformat.');
+  return JSON.parse(await decryptBackupPayload(record.envelope,password));
+}
+async function requestLocalDataPassword(hasExistingData){
+  if(!window.isSecureContext || !window.crypto?.subtle)throw new Error('Die lokale Datenverschlüsselung benötigt HTTPS oder localhost und Web Crypto.');
+  if(hasExistingData){
+    const password=prompt('Deine lokal gespeicherten Fuhrparkdaten sind verschlüsselt. Bitte gib dein Daten-Passwort ein:');
+    if(password===null || !password)throw new Error('Daten-Passwort nicht eingegeben.');
+    return password;
+  }
+  while(true){
+    const password=prompt('Lokale Datenverschlüsselung einrichten: Lege ein starkes Daten-Passwort fest. Ohne dieses Passwort sind die Daten nicht wiederherstellbar.');
+    if(password===null || !password)throw new Error('Ein Daten-Passwort ist erforderlich.');
+    if(password.length<10){alert('Bitte mindestens 10 Zeichen verwenden.');continue;}
+    const confirmPassword=prompt('Daten-Passwort zur Kontrolle erneut eingeben:');
+    if(confirmPassword===null)throw new Error('Einrichtung abgebrochen.');
+    if(password!==confirmPassword){alert('Die Passwörter stimmen nicht überein.');continue;}
+    return password;
+  }
+}
 function openAppDB(){
   return new Promise((resolve,reject)=>{
     if(!('indexedDB' in window)){reject(new Error('Dieser Browser unterstützt IndexedDB nicht.'));return;}
@@ -710,31 +739,44 @@ function normalizeDB(value){if(!value||!Array.isArray(value.vehicles))value={veh
 async function load(){
   try{
     const stored=await idbGet();
-    let raw=null; try{raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);}catch(e){}
-    // If IndexedDB is populated, it is authoritative. If it is empty, prefer recoverable legacy data.
-    if(stored && Array.isArray(stored.vehicles) && stored.vehicles.length){db=normalizeDB(stored);requestPersistentStorage();return;}
-    if(!raw && stored){db=normalizeDB(stored);requestPersistentStorage();return;}
-    db=normalizeDB(raw?JSON.parse(raw):(stored||{vehicles:[]}));
-    await idbPut(db);
+    let raw=null;try{raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);}catch(e){}
+    let existing=stored||null;
+    if(existing && existing.format===LOCAL_ENCRYPTED_FORMAT){
+      localDataPassword=await requestLocalDataPassword(true);
+      try{db=normalizeDB(await decryptLocalDB(existing,localDataPassword));}
+      catch(e){localDataPassword=null;alert('Das Daten-Passwort ist falsch oder die verschlüsselten Daten sind beschädigt. Die gespeicherten Daten wurden nicht verändert.');throw e;}
+      requestPersistentStorage();return;
+    }
+    // Übernahme vorhandener unverschlüsselter Daten erst nach expliziter Passwortvergabe.
+    const legacy=(existing && Array.isArray(existing.vehicles))?existing:(raw?JSON.parse(raw):{vehicles:[]});
+    localDataPassword=await requestLocalDataPassword(false);
+    db=normalizeDB(legacy);
+    await idbPut(await encryptLocalDB(db,localDataPassword));
     const verify=await idbGet();
-    if(!verify || !Array.isArray(verify.vehicles) || verify.vehicles.length!==db.vehicles.length)throw new Error('Übernahme konnte nicht bestätigt werden');
+    if(!verify || verify.format!==LOCAL_ENCRYPTED_FORMAT)throw new Error('Verschlüsselte Übernahme konnte nicht bestätigt werden.');
+    // Erst nach bestätigtem verschlüsseltem Speichern alte Klartextkopien entfernen.
     try{localStorage.removeItem(KEY);localStorage.removeItem(OLD_KEY);}catch(e){}
     requestPersistentStorage();
   }catch(e){
-    console.error(e);
-    try{const raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);if(raw){db=normalizeDB(JSON.parse(raw));alert('Die vorhandenen Daten wurden aus dem bisherigen Speicher geladen. Die Umstellung ist noch nicht vollständig bestätigt. Bitte nichts löschen und die Sicherung behalten.');return;}}catch(parseError){console.error(parseError);}
-    alert('Der Fuhrpark-Speicher konnte nicht geöffnet werden. Bitte nichts löschen und die JSON-Sicherung behalten.');
+    console.error('Lokale Daten konnten nicht entsperrt/verschlüsselt werden:',e);
+    if(!localDataPassword){
+      alert('Der Fuhrpark wurde nicht geöffnet. Die Daten bleiben unverändert. Lade die App erneut und gib das Daten-Passwort ein bzw. schließe die Einrichtung ab.');
+    }else{
+      alert('Die lokale Datenverschlüsselung konnte nicht sicher bestätigt werden. Bitte nichts löschen und eine vorhandene Sicherung behalten.');
+    }
+    throw e;
   }
 }
 async function requestPersistentStorage(){try{if(navigator.storage?.persist)await navigator.storage.persist();}catch(e){console.warn('Persistenter Speicher nicht verfügbar',e);}}
 function logHistory(action,details=''){if(!current)return;current.history=current.history||[];current.history.push({date:new Date().toISOString(),action,details});if(current.history.length>1000)current.history=current.history.slice(-1000);}
 async function save(){
   try{
+    if(!localDataPassword)throw new Error('Daten sind gesperrt; es wurde nichts gespeichert.');
     // Jede gespeicherte Änderung am aktuell geöffneten Fahrzeug als letzte Aktivität markieren.
     if(current && db.vehicles.some(v=>v.id===current.id)) current.updatedAt=new Date().toISOString();
-    await idbPut(db);return true;
+    await idbPut(await encryptLocalDB(db,localDataPassword));return true;
   }
-  catch(e){alert('Speichern fehlgeschlagen. Deine letzte JSON-Sicherung bitte unbedingt behalten. Prüfe den freien Gerätespeicher.');console.error(e);return false;}
+  catch(e){alert('Verschlüsseltes Speichern fehlgeschlagen. Deine letzte JSON-Sicherung bitte unbedingt behalten. Prüfe den freien Gerätespeicher.');console.error(e);return false;}
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
 function euro(n){return new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(Number(n||0));}
@@ -1729,6 +1771,50 @@ const BACKUP_FOLDER_KEY='fuhrpark_backup_directory_handle_v1';
 async function idbGetKey(key){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readonly');const r=tx.objectStore(IDB_STORE).get(key);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error);tx.oncomplete=()=>d.close();tx.onerror=()=>{d.close();reject(tx.error);};});}
 async function idbPutKey(key,value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,key);tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
 async function updateBackupFolderStatus(){const el=document.getElementById('backupFolderStatus');if(!el)return;try{const handle=await idbGetKey(BACKUP_FOLDER_KEY);el.textContent=handle?'Sicherungsordner: '+handle.name+' (gespeichert)':'Sicherungsordner: noch nicht festgelegt';}catch(e){el.textContent='Sicherungsordner: Status nicht verfügbar';}}
+async function chooseBackupFolder(){
+  if(!window.isSecureContext || typeof window.showDirectoryPicker!=='function'){
+    alert('Dieser Browser stellt keine dauerhafte Ordnerauswahl bereit. Die normale JSON-Sicherung funktioniert weiterhin über den Download. Bitte Chrome/Android aktualisieren oder die Sicherung nach dem Download im gewünschten Ordner ablegen.');return;
+  }
+  try{
+    const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});
+    if(!handle) return;
+    // Request write permission immediately during the folder-picker user gesture.
+    let permission=await handle.queryPermission({mode:'readwrite'});
+    if(permission!=='granted') permission=await handle.requestPermission({mode:'readwrite'});
+    if(permission!=='granted'){
+      alert('Der Ordner wurde ausgewählt, aber Schreibzugriff wurde nicht erteilt. Bitte wähle den Ordner erneut und erlaube den Zugriff.');
+      return;
+    }
+    await idbPutKey(BACKUP_FOLDER_KEY,handle);
+    await updateBackupFolderStatus();
+    alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Die App kann dort jetzt Sicherungen ablegen.');
+  } catch(e){
+    if(e.name!=='AbortError') {
+      console.error('Sicherungsordner konnte nicht festgelegt werden:',e);
+      alert('Der Sicherungsordner konnte nicht gespeichert werden. Deine Fahrzeugdaten wurden nicht verändert.');
+    }
+  }
+}
+// Verschlüsselte Backups: AES-GCM mit einem aus dem Passwort abgeleiteten PBKDF2-Schlüssel.
+function bytesToBase64(bytes){let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
+function base64ToBytes(value){const binary=atob(value);const out=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)out[i]=binary.charCodeAt(i);return out;}
+async function deriveBackupKey(password,salt){
+  const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:310000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function encryptBackupPayload(plainText,password){
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await deriveBackupKey(password,salt);
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(plainText));
+  return {format:'fuhrpark-encrypted-backup',version:1,cipher:'AES-256-GCM',kdf:'PBKDF2-SHA-256',iterations:310000,salt:bytesToBase64(salt),iv:bytesToBase64(iv),ciphertext:bytesToBase64(new Uint8Array(encrypted))};
+}
+async function decryptBackupPayload(envelope,password){
+  if(envelope.cipher!=='AES-256-GCM'||envelope.kdf!=='PBKDF2-SHA-256'||envelope.iterations!==310000||!envelope.salt||!envelope.iv||!envelope.ciphertext)throw new Error('Unbekanntes Backup-Format');
+  const key=await deriveBackupKey(password,base64ToBytes(envelope.salt));
+  const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToBytes(envelope.iv)},key,base64ToBytes(envelope.ciphertext));
+  return new TextDecoder().decode(decrypted);
+}
 let pendingMobileBackup=null;
 function showMobileBackupSavePanel(filename,json){
   pendingMobileBackup={filename,json};
@@ -1788,26 +1874,6 @@ async function chooseBackupFolder(){
     alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Beim nächsten Backup wird der Zugriff geprüft.');
   }catch(e){if(e.name!=='AbortError'){console.error(e);alert('Der Sicherungsordner konnte nicht gespeichert werden. Bitte beim Backup das Speichern-Menü des Handys verwenden.');}}
 
-}
-// Verschlüsselte Backups: AES-GCM mit einem aus dem Passwort abgeleiteten PBKDF2-Schlüssel.
-function bytesToBase64(bytes){let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
-function base64ToBytes(value){const binary=atob(value);const out=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)out[i]=binary.charCodeAt(i);return out;}
-async function deriveBackupKey(password,salt){
-  const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:310000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
-}
-async function encryptBackupPayload(plainText,password){
-  const salt=crypto.getRandomValues(new Uint8Array(16));
-  const iv=crypto.getRandomValues(new Uint8Array(12));
-  const key=await deriveBackupKey(password,salt);
-  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(plainText));
-  return {format:'fuhrpark-encrypted-backup',version:1,cipher:'AES-256-GCM',kdf:'PBKDF2-SHA-256',iterations:310000,salt:bytesToBase64(salt),iv:bytesToBase64(iv),ciphertext:bytesToBase64(new Uint8Array(encrypted))};
-}
-async function decryptBackupPayload(envelope,password){
-  if(envelope.cipher!=='AES-256-GCM'||envelope.kdf!=='PBKDF2-SHA-256'||envelope.iterations!==310000||!envelope.salt||!envelope.iv||!envelope.ciphertext)throw new Error('Unbekanntes Backup-Format');
-  const key=await deriveBackupKey(password,base64ToBytes(envelope.salt));
-  const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToBytes(envelope.iv)},key,base64ToBytes(envelope.ciphertext));
-  return new TextDecoder().decode(decrypted);
 }
 async function backup(){
   if(!window.isSecureContext || !window.crypto?.subtle){

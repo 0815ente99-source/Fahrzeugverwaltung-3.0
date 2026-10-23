@@ -592,13 +592,13 @@ label{display:block;font-size:11px;font-weight:650;color:#59646d;margin-top:3px}
     </div>
     <div class="actions" style="margin-top:14px">
       <button class="secondary" onclick="hideInfoSettings();showCostOverview()">💶 Kostenübersicht</button>
-      <button class="secondary" onclick="backup()">💾 Backup erstellen (JSON)</button>
+      <button class="secondary" onclick="backup()">🔐 Verschlüsseltes Backup erstellen</button>
       <button class="secondary" onclick="chooseBackupFolder()">📁 Sicherungsordner festlegen</button>
       <div id="backupFolderStatus" class="muted" style="margin-top:8px">Sicherungsordner: noch nicht festgelegt</div>
       <button class="secondary" onclick="document.getElementById('importInput').click()">📥 Import</button>
       <button class="secondary" onclick="showStorageInfo()">ℹ️ Speicherung</button>
     </div>
-    <div class="muted" style="margin-top:10px">Fahrzeugdaten werden lokal auf diesem Gerät gespeichert. Erstelle regelmäßig eine JSON-Sicherung.</div>
+    <div class="muted" style="margin-top:10px">Fahrzeugdaten werden lokal auf diesem Gerät gespeichert. Erstelle regelmäßig eine verschlüsselte JSON-Sicherung. Bewahre das Passwort sicher auf: Es kann nicht wiederhergestellt werden.</div>
   </div>
 </div>
 
@@ -1691,13 +1691,31 @@ async function importBackup(input){
   if(!file)return;
   try{
     const text=await file.text();
-    const imported=JSON.parse(text);
-    if(!imported || !Array.isArray(imported.vehicles))throw new Error("Ungültige Sicherung");
+    let imported;
+    const parsed=JSON.parse(text);
+    if(parsed && parsed.format==='fuhrpark-encrypted-backup' && parsed.version===1){
+      if(!window.crypto?.subtle)throw new Error('Web Crypto ist in diesem Browser nicht verfügbar.');
+      const password=prompt('Passwort für diese verschlüsselte Sicherung eingeben:');
+      if(password===null)return;
+      if(!password)throw new Error('Kein Passwort eingegeben.');
+      const dec=await decryptBackupPayload(parsed,password);
+      imported=JSON.parse(dec);
+    }else{
+      // Kompatibilität: bisherige, unverschlüsselte JSON-Sicherungen bleiben importierbar.
+      imported=parsed;
+      if(!confirm('Diese Datei ist nicht verschlüsselt. Möchtest du die unverschlüsselte Sicherung importieren?'))return;
+    }
+    if(!imported || !Array.isArray(imported.vehicles))throw new Error('Ungültige Sicherung');
     if(!confirm(`Sicherung mit ${imported.vehicles.length} Fahrzeugen importieren? Die aktuellen Daten werden ersetzt.`))return;
-    db=normalizeDB(imported); if(!await save())throw new Error("Speichern der Sicherung fehlgeschlagen"); showHome();
-    alert("Sicherung importiert.");
-  }catch(e){alert("Die Sicherungsdatei konnte nicht importiert werden.");console.error(e);}
-  input.value='';
+    const previous=db;
+    db=normalizeDB(imported);
+    if(!await save()){db=previous;throw new Error('Speichern der Sicherung fehlgeschlagen');}
+    showHome();
+    alert('Sicherung importiert.');
+  }catch(e){
+    alert('Die Sicherungsdatei konnte nicht importiert werden. Bei verschlüsselten Sicherungen Passwort prüfen.');
+    console.error(e);
+  }finally{input.value='';}
 }
 
 async function deleteVehicle(){
@@ -1712,31 +1730,145 @@ async function idbGetKey(key){const d=await openAppDB();return new Promise((reso
 async function idbPutKey(key,value){const d=await openAppDB();return new Promise((resolve,reject)=>{const tx=d.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(value,key);tx.oncomplete=()=>{d.close();resolve(true);};tx.onerror=()=>{d.close();reject(tx.error||new Error('Speichern fehlgeschlagen.'));};tx.onabort=()=>{d.close();reject(tx.error||new Error('Speichern abgebrochen.'));};});}
 async function updateBackupFolderStatus(){const el=document.getElementById('backupFolderStatus');if(!el)return;try{const handle=await idbGetKey(BACKUP_FOLDER_KEY);el.textContent=handle?'Sicherungsordner: '+handle.name+' (gespeichert)':'Sicherungsordner: noch nicht festgelegt';}catch(e){el.textContent='Sicherungsordner: Status nicht verfügbar';}}
 async function chooseBackupFolder(){
-  if(!window.isSecureContext || typeof window.showDirectoryPicker!=='function'){
-    alert('Dieser Browser stellt keine dauerhafte Ordnerauswahl bereit. Die normale JSON-Sicherung funktioniert weiterhin über den Download. Bitte Chrome/Android aktualisieren oder die Sicherung nach dem Download im gewünschten Ordner ablegen.');return;
+  if(!window.isSecureContext){
+    alert('Die Ordnerauswahl benötigt HTTPS oder einen anderen sicheren Browserkontext. Die verschlüsselte Sicherung kann weiterhin heruntergeladen werden.');
+    return;
   }
-  try{const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});if(!handle) return;await idbPutKey(BACKUP_FOLDER_KEY,handle);await updateBackupFolderStatus();alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert. Beim nächsten Backup wird der Zugriff geprüft.');}
-  catch(e){if(e.name!=='AbortError')alert('Der Sicherungsordner konnte nicht gespeichert werden. Deine Fahrzeugdaten wurden nicht verändert.');}
+  if(typeof window.showDirectoryPicker!=='function'){
+    alert('Diese Browserumgebung unterstützt keine direkte Ordnerauswahl (showDirectoryPicker). Die verschlüsselte Sicherung wird weiterhin als Datei heruntergeladen. Du kannst sie anschließend über die Dateien-App in den gewünschten Ordner verschieben. Es wird keine unverschlüsselte Sicherung erstellt.');
+    return;
+  }
+  try{
+    // Direkt aus dem Klick-Handler aufrufen; readwrite bittet den Browser bereits
+    // bei der Auswahl um die erforderliche Berechtigung.
+    const handle=await window.showDirectoryPicker({id:'fuhrpark-json-backup',mode:'readwrite'});
+    if(!handle)return;
+    if(!handle || handle.kind!=='directory' || typeof handle.getFileHandle!=='function'){
+      throw new Error('Der Browser hat kein gültiges Verzeichnis-Handle zurückgegeben.');
+    }
+    // Wichtig: requestPermission zuerst aufrufen, ohne davor queryPermission
+    // abzuwarten. Die Abfrage kann die kurzlebige Nutzeraktivierung verbrauchen.
+    let permission='prompt';
+    if(typeof handle.requestPermission==='function'){
+      try{permission=await handle.requestPermission({mode:'readwrite'});}catch(e){
+        console.warn('Schreibberechtigung konnte nicht angefordert werden:',e);
+        permission='denied';
+      }
+    }else{
+      try{permission=await handle.queryPermission({mode:'readwrite'});}catch(_){permission='prompt';}
+    }
+    if(permission!=='granted'){
+      try{permission=await handle.queryPermission({mode:'readwrite'});}catch(_){}
+    }
+    await idbPutKey(BACKUP_FOLDER_KEY,handle);
+    await updateBackupFolderStatus();
+    if(permission==='granted'){
+      alert('Sicherungsordner „'+handle.name+'“ wurde gespeichert und Schreibzugriff ist bestätigt.');
+    }else{
+      alert('Der Ordner wurde gespeichert, aber Schreibzugriff ist noch nicht bestätigt. Tippe erneut auf „Sicherungsordner festlegen“ und erteile die Berechtigung. Bis dahin wird beim Backup nur der verschlüsselte Download angeboten.');
+    }
+  }catch(e){
+    if(e.name==='AbortError')return;
+    console.error('Ordnerauswahl fehlgeschlagen:',e);
+    const reason=e.name==='SecurityError'
+      ? 'Der Browser hat die Auswahl blockiert. Öffne die App direkt über ihre HTTPS-Adresse und tippe erneut auf die Schaltfläche.'
+      : e.name==='NotAllowedError'
+        ? 'Der Zugriff wurde nicht erlaubt. Wähle den Ordner erneut aus und erteile Schreibzugriff.'
+        : 'Der Ordner konnte nicht ausgewählt oder gespeichert werden.';
+    alert(reason+' Deine Fahrzeugdaten wurden nicht verändert. Die verschlüsselte Download-Sicherung bleibt verfügbar.');
+  }
+}
+// Verschlüsselte Backups: AES-GCM mit einem aus dem Passwort abgeleiteten PBKDF2-Schlüssel.
+function bytesToBase64(bytes){let binary='';for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);return btoa(binary);}
+function base64ToBytes(value){const binary=atob(value);const out=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)out[i]=binary.charCodeAt(i);return out;}
+async function deriveBackupKey(password,salt){
+  const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:310000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function encryptBackupPayload(plainText,password){
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await deriveBackupKey(password,salt);
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(plainText));
+  return {format:'fuhrpark-encrypted-backup',version:1,cipher:'AES-256-GCM',kdf:'PBKDF2-SHA-256',iterations:310000,salt:bytesToBase64(salt),iv:bytesToBase64(iv),ciphertext:bytesToBase64(new Uint8Array(encrypted))};
+}
+async function decryptBackupPayload(envelope,password){
+  if(envelope.cipher!=='AES-256-GCM'||envelope.kdf!=='PBKDF2-SHA-256'||envelope.iterations!==310000||!envelope.salt||!envelope.iv||!envelope.ciphertext)throw new Error('Unbekanntes Backup-Format');
+  const key=await deriveBackupKey(password,base64ToBytes(envelope.salt));
+  const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToBytes(envelope.iv)},key,base64ToBytes(envelope.ciphertext));
+  return new TextDecoder().decode(decrypted);
 }
 async function backup(){
-  const filename='fuhrpark-sicherung-'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.json';
-  const json=JSON.stringify({...db,backupVersion:2,backupCreatedAt:new Date().toISOString()},null,2);
+  if(!window.isSecureContext || !window.crypto?.subtle){
+    alert('Verschlüsselte Sicherungen benötigen einen sicheren Kontext (HTTPS) und Web Crypto. Öffne die App über ihre HTTPS-Adresse. Es wurde keine unverschlüsselte Datei erstellt.');
+    return;
+  }
+
+  // Wichtig: Auf Android kann die Freigabe für einen gespeicherten Ordner
+  // nach Importen, App-Neustarts oder dem Wiederherstellen des Handles erneut
+  // erforderlich sein. Daher die Berechtigung direkt am Anfang des Klicks und
+  // VOR Passwortdialogen sowie der Verschlüsselung prüfen/anfordern.
+  let handle=null;
+  let folderMessage='';
   try{
-    const handle=await idbGetKey(BACKUP_FOLDER_KEY);
-    if(handle && typeof handle.getFileHandle==='function'){
-      let permission=await handle.queryPermission({mode:'readwrite'});
-      if(permission!=='granted')permission=await handle.requestPermission({mode:'readwrite'});
-      if(permission==='granted'){
-        const fileHandle=await handle.getFileHandle(filename,{create:true});
-        const writable=await fileHandle.createWritable();
-        try{await writable.write(new Blob([json],{type:'application/json'}));await writable.close();}
-        catch(e){try{await writable.abort();}catch(_){}throw e;}
-        alert('JSON-Backup erfolgreich im Ordner „'+handle.name+'“ gespeichert.\nDatei: '+filename);return;
+    handle=await idbGetKey(BACKUP_FOLDER_KEY);
+    if(handle){
+      if(handle.kind!=='directory' || typeof handle.getFileHandle!=='function'){
+        folderMessage='Der gespeicherte Ordnerverweis ist ungültig. Bitte den Sicherungsordner erneut festlegen.';
+        handle=null;
+      }else{
+        let permission='prompt';
+        try{permission=await handle.queryPermission({mode:'readwrite'});}catch(e){console.warn('Ordnerberechtigung konnte nicht abgefragt werden:',e);}
+        if(permission!=='granted' && typeof handle.requestPermission==='function'){
+          try{permission=await handle.requestPermission({mode:'readwrite'});}catch(e){console.warn('Erneute Ordnerfreigabe nicht erteilt:',e);}
+        }
+        if(permission!=='granted'){
+          folderMessage='Chrome hat den Schreibzugriff für den gewählten Sicherungsordner nicht freigegeben. Die verschlüsselte Sicherung wird zusätzlich als Download angeboten. Du kannst anschließend über „Sicherungsordner festlegen“ den Ordner erneut auswählen.';
+          handle=null;
+        }
       }
-      alert('Der Ordnerzugriff wurde nicht erteilt. Es wird stattdessen der normale Download gestartet.');
     }
-  }catch(e){console.error('Backup in festen Ordner fehlgeschlagen:',e);alert('Speichern im festgelegten Ordner war nicht möglich. Details stehen in der Browser-Konsole. Es wird stattdessen der normale Download gestartet.');}
-  const blob=new Blob([json],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }catch(e){
+    console.warn('Gespeicherter Sicherungsordner konnte nicht vorbereitet werden:',e);
+    folderMessage='Der gespeicherte Sicherungsordner ist derzeit nicht zugänglich. Die verschlüsselte Sicherung wird zusätzlich als Download angeboten.';
+    handle=null;
+  }
+
+  const password=prompt('Passwort für die verschlüsselte Sicherung festlegen. Verwende ein langes, einzigartiges Passwort. Es wird nicht gespeichert.');
+  if(password===null)return;
+  if(password.length<12){alert('Bitte ein Passwort mit mindestens 12 Zeichen verwenden.');return;}
+  const confirmPassword=prompt('Passwort zur Kontrolle erneut eingeben:');
+  if(confirmPassword===null)return;
+  if(password!==confirmPassword){alert('Die Passwörter stimmen nicht überein. Es wurde keine Sicherung erstellt.');return;}
+  const filename='fuhrpark-sicherung-verschluesselt-'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.json';
+  const plain=JSON.stringify({...db,backupVersion:2,backupCreatedAt:new Date().toISOString()},null,2);
+  let json;
+  try{json=JSON.stringify(await encryptBackupPayload(plain,password),null,2);}
+  catch(e){console.error(e);alert('Die Sicherung konnte nicht verschlüsselt werden. Es wurde keine Datei gespeichert.');return;}
+
+  if(handle){
+    try{
+      // Berechtigung kann sich zwischen Prüfung und Schreiben ändern; deshalb
+      // Fehler abfangen und nie behaupten, die Datei sei im Ordner gespeichert.
+      const fileHandle=await handle.getFileHandle(filename,{create:true});
+      const writable=await fileHandle.createWritable();
+      try{
+        await writable.write(new Blob([json],{type:'application/json'}));
+        await writable.close();
+        alert('Verschlüsselte Sicherung im Ordner „'+handle.name+'“ gespeichert. Ohne das Passwort kann sie nicht wiederhergestellt werden. Datei: '+filename);
+        return;
+      }catch(e){try{await writable.abort();}catch(_){}throw e;}
+    }catch(e){
+      console.error('Backup im Ordner fehlgeschlagen:',e);
+      folderMessage='Schreiben in den ausgewählten Ordner ist fehlgeschlagen ('+(e.message||e.name||'unbekannter Fehler')+'). Die verschlüsselte Sicherung wird zusätzlich als Download angeboten.';
+    }
+  }
+  alert((folderMessage||'Es ist kein Sicherungsordner eingerichtet.')+'\n\nEs wird ausschließlich die verschlüsselte JSON-Datei heruntergeladen, niemals Klartext.');
+  const blob=new Blob([json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function installApp(){
   if(deferredInstallPrompt){
@@ -1757,7 +1889,7 @@ window.addEventListener('appinstalled',()=>{
   deferredInstallPrompt=null;
 });
 if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
-  navigator.serviceWorker.register('./sw.js?v=39', {updateViaCache:'none'}).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js?v=40', {updateViaCache:'none'}).catch(()=>{});
 }
 // Android-Zurücktaste innerhalb der PWA abfangen: erst innerhalb der App zurückgehen,
 // auf der Startansicht bleiben statt die App durch den Zurück-Verlauf zu verlassen.

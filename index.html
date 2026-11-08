@@ -1199,54 +1199,31 @@ function showAppointments(){
   animatePage('appointments');renderAppointments();syncNotificationButton();
 }
 function setAppointmentFilter(filter){appointmentFilter=filter;renderAppointments();}
-function normalizeTuvDateKey(value){
-  if(value===null||value===undefined||value==='')return '';
-  const raw=String(value).trim();
-  // HTML date inputs normally store YYYY-MM-DD; also tolerate ISO timestamps.
-  let m=raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
-  if(m)return `${m[1]}-${m[2]}-${m[3]}`;
-  // Compatibility with older/imported German date strings.
-  m=raw.match(/^(\\d{1,2})[.\\/-](\\d{1,2})[.\\/-](\\d{4})$/);
-  if(m)return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
-  return '';
-}
 function renderAppointments(){
   const host=document.getElementById('appointmentList'); if(!host)return;
   const items=[];const today=localDateKey();
-  db.vehicles.forEach(v=>{
-    (v.reminders||[]).forEach((r,i)=>items.push({v,r,i,kind:'reminder'}));
-    // TÜV/HU wird automatisch als überfälliger Eintrag geführt – erst NACH Ablauf.
-    // Der Datensatz bleibt im Fahrzeug gespeichert; es wird kein künstlicher Termin angelegt.
-    const tuvDate=normalizeTuvDateKey(v.tuv);
-    if(tuvDate && tuvDate<today){
-      const alreadyListed=(v.reminders||[]).some(r=>!r.done && normalizeTuvDateKey(r.date)===tuvDate && /tüv|hu|hauptuntersuchung/i.test(String(r.title||'')));
-      if(!alreadyListed) items.push({v,r:{date:tuvDate,title:'TÜV / Hauptuntersuchung überzogen',note:`TÜV seit ${formatDateDE(tuvDate)} abgelaufen.`,done:false},i:-1,kind:'tuv'});
-    }
-  });
+  db.vehicles.forEach(v=>(v.reminders||[]).forEach((r,i)=>items.push({v,r,i})));
   items.sort((a,b)=>String(a.r.date||'9999-99-99').localeCompare(String(b.r.date||'9999-99-99')));
-  const open=items.filter(x=>x.kind==='tuv'||!x.r.done);
-  // Erledigte normale Termine bleiben gespeichert, werden aber nicht angezeigt.
+  const open=items.filter(x=>!x.r.done);
+  // Erledigte Termine bleiben vollständig gespeichert, werden aber in dieser Übersicht nicht angezeigt.
   if(appointmentFilter==='done') appointmentFilter='all';
   const filtered=open.filter(({r})=>{
     if(appointmentFilter==='upcoming')return !!r.date&&r.date>=today;
     if(appointmentFilter==='overdue')return !!r.date&&r.date<today;
     return true;
   });
-  const counts={all:open.length,open:open.length,upcoming:open.filter(x=>x.kind!=='tuv'&&x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length};
+  const counts={all:open.length,open:open.length,upcoming:open.filter(x=>x.r.date&&x.r.date>=today).length,overdue:open.filter(x=>x.r.date&&x.r.date<today).length};
   Object.entries(counts).forEach(([key,count])=>{const b=document.getElementById(({all:'filterAll',open:'filterOpen',upcoming:'filterUpcoming',overdue:'filterOverdue'})[key]);if(b){b.textContent=({all:'Alle',open:'Offen',upcoming:'Demnächst',overdue:'Überfällig'})[key]+' ('+count+')';b.style.background=appointmentFilter===key?'var(--blue)':'#e7edf2';b.style.color=appointmentFilter===key?'#fff':'var(--blue)';}});
   const summary=document.getElementById('appointmentSummary');if(summary)summary.textContent=`${counts.overdue} überfällig · ${counts.upcoming} demnächst`;
   if(!filtered.length){host.innerHTML='<div class="empty">Für diesen Filter gibt es keine Termine.</div>';return;}
-  host.innerHTML=filtered.map(({v,r,i,kind})=>{
+  host.innerHTML=filtered.map(({v,r,i})=>{
     const vehicle=esc(v.name||'Fahrzeug');
     const delta=r.date?Math.round((new Date(r.date+'T12:00:00').getTime()-new Date(today+'T12:00:00').getTime())/86400000):null;
     const dateStatus=!r.date?'Ohne Datum':delta<0?'Überfällig':delta===0?'Heute':'Offen';
     const urgencyClass=delta===null?'urgency-unknown':delta<0?'urgency-overdue':delta===0?'urgency-today':delta<=5?'urgency-soon':'urgency-later';
     const distanceLabel=delta===null?'Kein Datum':delta<0?`${Math.abs(delta)} Tag(e) überfällig`:delta===0?'Heute fällig':delta===1?'Morgen':`in ${delta} Tagen`;
     const lead=Number(r.leadDays)>0?`<div class="muted">Erinnerung: ${esc(String(r.leadDays))} Tag(e) vorher</div>`:'';
-    const actions=kind==='tuv'
-      ? `<button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug öffnen</button>`
-      : `<button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button>`;
-    return `<div class="calendar-event ${urgencyClass}"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus} <span class="appointment-distance">${esc(distanceLabel)}</span></div><div class="calendar-event-title">${vehicle}</div><div class="calendar-event-vehicle">${esc(r.title||'Termin')}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions">${actions}</div></div>`;
+    return `<div class="calendar-event ${urgencyClass}"><div class="calendar-event-main"><div class="calendar-event-date">${esc(formatDateDE(r.date))} · ${dateStatus} <span class="appointment-distance">${esc(distanceLabel)}</span></div><div class="calendar-event-title">${vehicle}</div><div class="calendar-event-vehicle">${esc(r.title||'Termin')}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}${lead}</div><div class="calendar-event-actions"><button class="secondary" onclick="openVehicle('${esc(v.id)}')">Fahrzeug</button><button class="secondary" onclick="editReminder('${esc(v.id)}',${i})">✏️ Bearbeiten</button>${r.date?`<button class="secondary" onclick="exportReminderToCalendar('${esc(v.id)}',${i})">Kalender</button>`:''}<button class="secondary" onclick="markAppointmentDone('${esc(v.id)}',${i})">✓ Erledigt</button></div></div>`;
   }).join('');
 }
 async function markAppointmentDone(vehicleId,index){

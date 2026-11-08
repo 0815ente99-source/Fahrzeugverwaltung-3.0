@@ -1199,6 +1199,17 @@ function showAppointments(){
   animatePage('appointments');renderAppointments();syncNotificationButton();
 }
 function setAppointmentFilter(filter){appointmentFilter=filter;renderAppointments();}
+function normalizeTuvDateKey(value){
+  if(value===null||value===undefined||value==='')return '';
+  const raw=String(value).trim();
+  // HTML date inputs normally store YYYY-MM-DD; also tolerate ISO timestamps.
+  let m=raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
+  if(m)return `${m[1]}-${m[2]}-${m[3]}`;
+  // Compatibility with older/imported German date strings.
+  m=raw.match(/^(\\d{1,2})[.\\/-](\\d{1,2})[.\\/-](\\d{4})$/);
+  if(m)return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+  return '';
+}
 function renderAppointments(){
   const host=document.getElementById('appointmentList'); if(!host)return;
   const items=[];const today=localDateKey();
@@ -1206,9 +1217,10 @@ function renderAppointments(){
     (v.reminders||[]).forEach((r,i)=>items.push({v,r,i,kind:'reminder'}));
     // TÜV/HU wird automatisch als überfälliger Eintrag geführt – erst NACH Ablauf.
     // Der Datensatz bleibt im Fahrzeug gespeichert; es wird kein künstlicher Termin angelegt.
-    if(v.tuv && /^\d{4}-\d{2}-\d{2}$/.test(v.tuv) && v.tuv<today){
-      const alreadyListed=(v.reminders||[]).some(r=>!r.done && r.date===v.tuv && /tüv|hu|hauptuntersuchung/i.test(String(r.title||'')));
-      if(!alreadyListed) items.push({v,r:{date:v.tuv,title:'TÜV / Hauptuntersuchung überzogen',note:'TÜV ist seit diesem Datum abgelaufen.',done:false},i:-1,kind:'tuv'});
+    const tuvDate=normalizeTuvDateKey(v.tuv);
+    if(tuvDate && tuvDate<today){
+      const alreadyListed=(v.reminders||[]).some(r=>!r.done && normalizeTuvDateKey(r.date)===tuvDate && /tüv|hu|hauptuntersuchung/i.test(String(r.title||'')));
+      if(!alreadyListed) items.push({v,r:{date:tuvDate,title:'TÜV / Hauptuntersuchung überzogen',note:`TÜV seit ${formatDateDE(tuvDate)} abgelaufen.`,done:false},i:-1,kind:'tuv'});
     }
   });
   items.sort((a,b)=>String(a.r.date||'9999-99-99').localeCompare(String(b.r.date||'9999-99-99')));
